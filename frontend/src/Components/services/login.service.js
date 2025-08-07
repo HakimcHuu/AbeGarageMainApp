@@ -13,7 +13,7 @@ const logInEmployee = async (formData) => {
   return response;
 };
 
-// A function to send the login request for a customer
+// A function to send the login request for a customer (email+password OR email+phone)
 const logInCustomer = async (formData) => {
   const requestOptions = {
     method: "POST",

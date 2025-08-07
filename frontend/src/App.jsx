@@ -24,6 +24,7 @@ import Orders from "./pages/admin/Orders"
 import OrderDetails from "./pages/admin/OrderDetails"
 import Services from "./pages/admin/Services";
 import EditOrderForm from "./Components/Admin/EditOrderForm/EditOrderForm";
+import MyOrders from "./pages/MyOrders";
 function App() {
   return (
     <Router>
@@ -34,6 +35,7 @@ function App() {
           <Route path="/contact" element={<Contact />} />
           <Route path="/about" element={<AboutUs />} />
           <Route path="/services" element={<HomeService />} />
+          <Route path="/my-orders" element={<MyOrders />} />
           <Route
             path="/admin/admin-landing"
             element={

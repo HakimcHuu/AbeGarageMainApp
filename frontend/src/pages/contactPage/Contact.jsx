@@ -3,14 +3,8 @@ import React from "react";
 import bg1 from "../../assets/images/banner/bg-1.jpg";
 
 const Section = ({ className, style, children }) => (
-  <section
-    className={className}
-    style={{ ...style, maxWidth: "100%", overflowX: "hidden" }}
-  >
-    <div
-      className="auto-container"
-      style={{ maxWidth: "100%", paddingLeft: "10px", paddingRight: "10px" }}
-    >
+  <section className={className} style={style}>
+    <div className="auto-container">
       {children}
     </div>
   </section>
@@ -19,28 +13,16 @@ const Section = ({ className, style, children }) => (
 function Contact() {
   return (
     <div className="page-wrapper">
-      <Section
-        className="video-section"
-        style={{
-          background: `linear-gradient(to right, rgba(0, 0, 0, 1), rgba(255, 255, 255, 0.4)), url(${bg1})`,
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-        }}
-      >
-        <h2 style={{ paddingLeft: "80px", color: "white" }}>Contact Us</h2>
-        <span style={{ color: "red", paddingLeft: "90px" }}>Home</span>
-        <i
-          className="flaticon-right-arrow"
-          style={{ margin: "0 5px", color: "white", fontSize: "10px" }}
-        ></i>
-        <span style={{ color: "white" }}>About Us</span>
+      <Section className="video-section" style={{ backgroundImage: `url(${bg1})` }}>
+        <h2>Contact Us</h2>
+        <ul className="page-breadcrumb">
+          <li>Home</li>
+          <li>Contact Us</li>
+        </ul>
       </Section>
 
       {/* Contact Section */}
-      <section
-        className="contact-section"
-        style={{ width: "100%", margin: "0 auto" }}
-      >
+      <section className="contact-section">
         <div className="auto-container">
           <div className="row clearfix">
             {/* Map Section */}

@@ -18,7 +18,7 @@ const PrivateAuthRoute = ({ roles, children }) => {
           setIsLogged(true);
 
           // Check if the user's role matches the required roles for the route
-          if (roles && roles.includes(loggedInUser.employee_role)) {
+          if (!roles || roles.length === 0 || roles.includes(loggedInUser.employee_role) || loggedInUser.employee_role === 3) {
             setIsAuthorized(true);
           }
         }

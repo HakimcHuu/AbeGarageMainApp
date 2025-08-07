@@ -40,10 +40,10 @@ const additionalServices = [
   "Computer Diagnostic Testing",
 ];
 
-// Reusable Section component for different sections of the page
+// Reusable Section component aligned with template defaults
 const Section = ({ className, style, children }) => (
-  <section className={className} style={{ ...style, maxWidth: "100%", overflowX: "hidden" }}>
-    <div className="auto-container" style={{ maxWidth: "100%", paddingLeft: "10px", paddingRight: "10px" }}>
+  <section className={className} style={style}>
+    <div className="auto-container">
       {children}
     </div>
   </section>
@@ -87,10 +87,10 @@ const Home = () => {
     <>
       {/* Video Section */}
       <Section className="video-section" style={{ backgroundImage: `url(${banner1})` }}>
-        <h5 style={{ paddingLeft: '80px' }}>Working since 2000</h5>
-        <h2 style={{ paddingLeft: '80px' }}>Tuneup Your Car <br /> to Next Level</h2>
+        <h5>Working since 2000</h5>
+        <h2>Tuneup Your Car <br /> to Next Level</h2>
         <div className="video-box">
-          <div className="video-btn" style={{ paddingLeft: '80px' }}>
+          <div className="video-btn">
             <a
               href="https://www.youtube.com/watch?v=nfP5N9Yc72A&t=28s"
               className="overlay-link lightbox-image video-fancybox ripple"
@@ -105,7 +105,7 @@ const Home = () => {
 
       {/* About Section */}
       <Section className="about-section">
-        <div className="row" style={{ width: '90%', margin: '0 auto' }}>
+        <div className="row">
           <div className="col-lg-5">
             <div className="image-box">
               <img src={vban1} alt="Vehicle Banner 1" />
@@ -151,7 +151,7 @@ const Home = () => {
             Bring to the table win-win survival strategies to ensure proactive domination. At the end of the day, going forward, a new normal that has evolved from generation X is on the runway heading towards a streamlined cloud solution.
           </div>
         </div>
-        <div className="row" style={{ width: '90%', margin: '0 auto' }}>
+        <div className="row">
           {services.map((service, index) => (
             <ServiceBlock key={index} title={service.title} icon={service.icon} />
           ))}
@@ -170,8 +170,8 @@ const Home = () => {
             </div>
           </div>
           <div className="col-lg-6">
-            <div className="image" >
-              <img src={image3} alt="Quality Service" style={{ height: '513px' }}/>
+            <div className="image">
+              <img src={image3} alt="Quality Service" />
             </div>
           </div>
         </div>
@@ -179,7 +179,7 @@ const Home = () => {
 
       {/* Why Choose Us & Additional Services Section */}
       <Section className="why-choose-us">
-        <div className="row" style={{ width: '90%', margin: '0 auto' }}>
+        <div className="row">
           <div className="col-lg-6">
             <div className="sec-title style-two">
               <h2>Why Choose Us</h2>
@@ -215,9 +215,9 @@ const Home = () => {
 
       {/* Second Video Section */}
       <Section className="video-section" style={{ backgroundImage: `url(${bg1})`}}>
-        <h5 style={{ paddingLeft: '80px' }}>Working since 2000</h5>
-        <h2 style={{ paddingLeft: '80px' }}>We are leader <br /> in Car Mechanical Work</h2>
-        <div className="video-box" style={{ paddingLeft: '80px' }}>
+        <h5>Working since 2000</h5>
+        <h2>We are leader <br /> in Car Mechanical Work</h2>
+        <div className="video-box">
           <div className="video-btn">
             <a
             href="https://www.youtube.com/watch?v=nfP5N9Yc72A&t=28s"
@@ -234,7 +234,7 @@ const Home = () => {
 
       {/* Call to Action Section */}
       <Section className="cta-section">
-        <div className="wrapper-box" style={{ width: '90%', margin: '0 auto' }}>
+        <div className="wrapper-box">
           <div className="left-column">
             <h3>Schedule Your Appointment Today</h3>
             <div className="text">Your Automotive Repair & Maintenance Service Specialist</div>

@@ -4,6 +4,8 @@ import App from "./App.jsx";
 import "./index.css";
 import "./assets/template_assets/css/style.css";
 import "./assets/template_assets/css/color.css";
+import "./assets/template_assets/css/responsive.css";
+import "./assets/styles/custom.css";
 import 'bootstrap/dist/css/bootstrap.min.css';
 import { AuthProvider } from "./Contexts/AuthContext.jsx";
 createRoot(document.getElementById("root")).render(

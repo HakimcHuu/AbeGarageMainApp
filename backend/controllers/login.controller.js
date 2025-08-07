@@ -55,7 +55,8 @@ async function logInCustomer(req, res, next) {
       customer_id: customer.data.customer_id,
       customer_email: customer.data.customer_email,
       customer_first_name: customer.data.customer_first_name,
-      type: "customer"  
+      customer_phone: customer.data.customer_phone,
+      type: "customer"
     };
 
     // Generate token
@@ -68,6 +69,7 @@ async function logInCustomer(req, res, next) {
       data: {
         customer_token: token,
         customer_first_name: customer.data.customer_first_name,
+        customer_id: customer.data.customer_id,
       },
     });
   } catch (error) {

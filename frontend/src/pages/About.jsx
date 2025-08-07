@@ -38,14 +38,8 @@ const additionalServices = [
 
 // Reusable Section component for different sections of the page to make all the page responsiev
 const Section = ({ className, style, children }) => (
-  <section
-    className={className}
-    style={{ ...style, maxWidth: "100%", overflowX: "hidden" }}
-  >
-    <div
-      className="auto-container"
-      style={{ maxWidth: "100%", paddingLeft: "10px", paddingRight: "10px" }}
-    >
+  <section className={className} style={style}>
+    <div className="auto-container">
       {children}
     </div>
   </section>
@@ -67,40 +61,22 @@ function AboutUs() {
     <>
       {/* Page Title Section */}
       <Section>
-        <div
-          className="page-title"
-          style={{ backgroundImage: `url(${image5})` }}
-        >
+        <div className="page-title" style={{ backgroundImage: `url(${image5})` }}>
           <div className="auto-container">
-            <h2 style={{ paddingLeft: "10px" }}>About us</h2>
-            <ul className="page-breadcrumb" style={{ paddingLeft: "10px" }}>
-              <li style={{ display: "inline", marginRight: "10px" }}>
-                {/* Use Link for navigation instead of <a> */}
-                <Link to="/" style={{ color: "#f00", fontSize: "30px" }}>
-                  Home
-                </Link>
-              </li>
-              <li
-                style={{ display: "inline", color: "#fff", fontSize: "20px" }}
-              >
-                About Us
-              </li>
+            <h2>About us</h2>
+            <ul className="page-breadcrumb">
+              <li><Link to="/">Home</Link></li>
+              <li>About Us</li>
             </ul>
           </div>
         </div>
       </Section>
       {/* About Section */}
       <Section className="about-section-three" style={{ padding: "50px 0" }}>
-        <div
-          className="auto-container"
-          style={{ maxWidth: "1200px", margin: "0 auto" }}
-        >
-          <div
-            className="row"
-            style={{ display: "flex", alignItems: "center" }}
-          >
+        <div className="auto-container">
+          <div className="row">
             {/* Text Content */}
-            <div className="col-lg-7" style={{ flexBasis: "58%" }}>
+            <div className="col-lg-7">
               <div className="content">
                 <h2
                   style={{
@@ -140,7 +116,7 @@ function AboutUs() {
             </div>
 
             {/* Image Section */}
-            <div className="col-lg-5" style={{ flexBasis: "40%" }}>
+            <div className="col-lg-5">
               <div className="image">
                 <img
                   src={image6}
@@ -154,7 +130,7 @@ function AboutUs() {
       </Section>
       {/* About Section */}
       <Section className="about-section">
-        <div className="row" style={{ width: "90%", margin: "0 auto" }}>
+        <div className="row">
           <div className="col-lg-5">
             <div className="image-box" style={{ paddingLeft: "150px" }}>
               <img src={vban1} alt="Vehicle Banner 1" />
@@ -162,11 +138,7 @@ function AboutUs() {
               <div
                 className="year-experience"
                 data-parallax='{"y": 30}'
-                style={{
-                  left: "70%",
-                  textAlign: "center",
-                  padding: "10px",
-                }}
+                style={{ left: "70%", textAlign: "center", padding: "10px" }}
               >
                 <strong>24</strong> years <br /> Experience
               </div>
@@ -206,7 +178,7 @@ function AboutUs() {
 
       {/* Why Choose Us & Additional Services Section */}
       <Section className="why-choose-us">
-        <div className="row" style={{ width: "90%", margin: "0 auto" }}>
+        <div className="row">
           <div className="col-lg-6">
             <div className="sec-title style-two">
               <h2>Why Choose Us</h2>
@@ -251,15 +223,10 @@ function AboutUs() {
       </Section>
 
       {/* Second Video Section */}
-      <Section
-        className="video-section"
-        style={{ backgroundImage: `url(${bg1})` }}
-      >
-        <h5 style={{ paddingLeft: "80px" }}>Working since 2000</h5>
-        <h2 style={{ paddingLeft: "80px" }}>
-          We are leader <br /> in Car Mechanical Work
-        </h2>
-        <div className="video-box" style={{ paddingLeft: "80px" }}>
+      <Section className="video-section" style={{ backgroundImage: `url(${bg1})` }}>
+        <h5>Working since 2000</h5>
+        <h2>We are leader <br /> in Car Mechanical Work</h2>
+        <div className="video-box">
           <div className="video-btn">
             <a
               href="https://www.youtube.com/watch?v=nfP5N9Yc72A&t=28s"
@@ -280,7 +247,7 @@ function AboutUs() {
 
       {/* Call to Action Section */}
       <Section className="cta-section">
-        <div className="wrapper-box" style={{ width: "90%", margin: "0 auto" }}>
+        <div className="wrapper-box">
           <div className="left-column">
             <h3>Schedule Your Appointment Today</h3>
             <div className="text">

@@ -16,6 +16,106 @@ input::placeholder, textarea::placeholder {
 .main-header {
   box-shadow: rgba(9, 30, 66, 0.25) 0px 2px 5px -2px, rgba(9, 30, 66, 0.08) 0px 0px 0px 1px;
 }
+
+/* Remove divider line that appears before/around the Login button */
+.main-header .header-upper .search-btn,
+.main-header .header-upper .right-column .search-btn,
+.main-header .header-upper .right-column {
+  border-left: none !important;
+  margin-left: 0 !important;
+  padding-left: 0 !important;
+}
+
+/* Also ensure the login container has no preceding border */
+.main-header .header-upper .link-btn {
+  margin-left: 0 !important;
+  padding-left: 0 !important;
+  border: none !important;
+}
+
+/* Ensure desktop nav is visible on large screens */
+@media only screen and (min-width: 1140px) {
+  .main-header .nav-outer .main-menu {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+  .main-header .nav-outer .main-menu .navigation {
+    display: flex !important;
+  }
+  .nav-outer .mobile-nav-toggler {
+    display: none !important;
+  }
+}
+
+/* Remove the small line effect under/next-to nav items */
+.main-menu .navigation > li:before {
+  display: none !important;
+  content: none !important;
+}
+
+/* Remove animated overlay line on buttons */
+.theme-btn.btn-style-one:before {
+  display: none !important;
+}
+
+/* Remove any border-left that the template may add near actions */
+.main-header .header-upper .right-column > * {
+  border: none !important;
+}
+
+/* Sticky header variant too */
+.main-header .sticky-header .header-upper .right-column,
+.sticky-header .right-column,
+.sticky-header .search-btn,
+.sticky-header .link-btn {
+  border: none !important;
+  margin-left: 0 !important;
+  padding-left: 0 !important;
+}
+
+/* Add spacing between nav and Login button */
+.main-header .header-upper .right-column {
+  gap: 20px; /* ensure space between nav and actions */
+}
+
+.main-header .header-upper .link-btn {
+  margin-left: 20px !important; /* nudge Login away from nav */
+}
+
+.sticky-header .right-column {
+  gap: 20px;
+}
+
+/* Ensure no underline/border on any nav links (including sticky) */
+.main-menu .navigation > li > a,
+.sticky-header .main-menu .navigation > li > a {
+  border: none !important;
+  text-decoration: none !important;
+}
+
+/* Remove any dashed/underline decoration on nav links and dropdowns */
+.main-menu .navigation > li > a,
+.main-menu .navigation > li > ul > li > a,
+.mobile-menu .navigation li > a {
+  text-decoration: none !important;
+  border: none !important;
+}
+
+.main-menu .navigation > li > a:hover,
+.main-menu .navigation > li > ul > li > a:hover,
+.mobile-menu .navigation li > a:hover {
+  text-decoration: none !important;
+  border: none !important;
+}
+
+/* Limit image height in Quality Service section to match design */
+.features-section .image img {
+  width: 100%;
+  height: auto;
+  max-height: 360px; /* closer to template card height */
+  object-fit: cover;
+}
 /* Admin pages */
 .admin-left-side {
   background-color:#222b48;
@@ -23,6 +123,7 @@ input::placeholder, textarea::placeholder {
 .admin-right-side {
   background: rgb(246 247 250);
   border-bottom: 1px solid #dfe2ec;
+  padding: 30px 25px;
 }
 .admin-menu {
   background: #1e2331;
@@ -179,6 +280,20 @@ input:disabled {
   font-weight: 600;
 }
 
+/* Equal height for service cards without disturbing layout */
+.services-section .row {
+  align-items: stretch;
+}
+.services-section .service-block-one {
+  display: block;
+  margin-bottom: 30px;
+}
+.services-section .service-block-one .inner-box {
+  display: block;
+  height: 100%;
+  min-height: 240px; /* adjust if needed to match other cards */
+}
+
 /* Order page */
 .faq-section.order-page .sear-form {
   position: relative;
@@ -245,6 +360,25 @@ input:disabled {
   -webkit-transition: all 500ms ease;
   -ms-transition: all 500ms ease;
   -o-transition: all 500ms ease;
+}
+
+/* Align admin add-customer form with template spacing */
+.contact-section .form-column .inner-column {
+  padding-top: 0;
+}
+.contact-section .sec-title.style-two h2 {
+  margin-bottom: 20px;
+}
+
+/* Login page width and spacing to match template */
+.contact-section .form-column.col-lg-6 {
+  max-width: 600px;
+}
+
+/* My Orders page alignment */
+.contact-section .form-column.col-lg-6 .contact-form input {
+  height: 56px;
+  font-size: 16px;
 }
 .single-order .service-block-one h2 {
   margin-bottom: 20px;

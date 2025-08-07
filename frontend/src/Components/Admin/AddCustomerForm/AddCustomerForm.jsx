@@ -108,14 +108,11 @@ function AddCustomerForm(props) {
   return (
     <section className="contact-section">
       <div className="auto-container">
-        <div className="flex items-center gap-3 mb-4">
-          <h2 className="page-titles text-3xl font-bold mb-4">
-            Add a new customer
-          </h2>
-          <div className="h-1 w-16 bg-red-500 mr-2 mt-2"></div>
+        <div className="sec-title style-two">
+          <h2>Add a new customer</h2>
         </div>
         <div className="row clearfix">
-          <div className="form-column col-lg-7">
+          <div className="form-column col-lg-6">
             <div className="inner-column">
               <div className="contact-form">
                 <form onSubmit={handleSubmit}>
@@ -204,11 +201,7 @@ function AddCustomerForm(props) {
                     </div>
 
                     <div className="form-group col-md-12">
-                      <button
-                        className="buttonStyle"
-                        type="submit"
-                        data-loading-text="Please wait..."
-                      >
+                      <button className="theme-btn btn-style-one" type="submit" data-loading-text="Please wait...">
                         <span>Add customer</span>
                       </button>
                     </div>

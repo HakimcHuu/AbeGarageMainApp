@@ -42,24 +42,12 @@ const Services = () => {
 	return (
     <div>
       <>
-        <div
-          className="page-title"
-          style={{ backgroundImage: `url(${image6})` }}
-        >
+        <div className="page-title" style={{ backgroundImage: `url(${image6})` }}>
           <div className="auto-container">
-            <h2 style={{ paddingLeft: "10px" }}>Our services</h2>
-            <ul className="page-breadcrumb" style={{ paddingLeft: "10px" }}>
-              <li style={{ display: "inline", marginRight: "10px" }}>
-                {/* Use Link for navigation instead of <a> */}
-                <Link to="/" style={{ color: "#f00", fontSize: "30px" }}>
-                  Home
-                </Link>
-              </li>
-              <li
-                style={{ display: "inline", color: "#fff", fontSize: "20px" }}
-              >
-                services
-              </li>
+            <h2>Our services</h2>
+            <ul className="page-breadcrumb">
+              <li><Link to="/">Home</Link></li>
+              <li>services</li>
             </ul>
           </div>
         </div>

@@ -51,33 +51,38 @@ async function logInEmployee(employeeData) {
   }
 }
 
-// Customer login logic
+// Customer login logic (supports email + phone OR email + password)
 async function logInCustomer(customerData) {
   try {
     let returnData = {};
     const customer = await customerService.getCustomerByEmail(
       customerData.email
     );
-    if (customer.length === 0) {
+    if (!customer || customer.length === 0) {
       returnData = { status: "fail", message: "Customer does not exist" };
       return returnData;
     }
 
-    // **IMPORTANT: Trim both strings before comparison**
-    const incomingCustomerPassword = customerData.password.trim();
-    const storedCustomerHash = customer[0].customer_password_hashed.trim();
-
-    
-    
-    
-
-    const passwordMatch = await bcrypt.compare(
-      incomingCustomerPassword, // Use the trimmed plaintext password
-      storedCustomerHash // Use the trimmed hashed password
-    );
-    if (!passwordMatch) {
-      returnData = { status: "fail", message: "Incorrect password" };
+    // If phone is provided, authenticate by matching the stored phone
+    if (customerData.phone) {
+      const providedPhone = String(customerData.phone).trim();
+      const storedPhone = String(customer[0].customer_phone || "").trim();
+      if (providedPhone !== storedPhone) {
+        return { status: "fail", message: "Incorrect phone number" };
+      }
+      returnData = { status: "success", data: customer[0] };
       return returnData;
+    }
+
+    // Otherwise fall back to password-based login for compatibility
+    if (!customerData.password) {
+      return { status: "fail", message: "Password or phone is required" };
+    }
+    const incomingCustomerPassword = customerData.password.trim();
+    const storedCustomerHash = String(customer[0].customer_password_hashed || "").trim();
+    const passwordMatch = await bcrypt.compare(incomingCustomerPassword, storedCustomerHash);
+    if (!passwordMatch) {
+      return { status: "fail", message: "Incorrect password" };
     }
     returnData = { status: "success", data: customer[0] };
     return returnData;

@@ -16,8 +16,8 @@ const services = [
 
 // Reusable Section component for different sections of the page
 const Section = ({ className, style, children }) => (
-    <section className={className} style={{ ...style, maxWidth: "100%", overflowX: "hidden" }}>
-        <div className="auto-container" style={{ maxWidth: "100%", paddingLeft: "10px", paddingRight: "10px" }}>
+    <section className={className} style={style}>
+        <div className="auto-container">
             {children}
         </div>
     </section>
@@ -59,7 +59,7 @@ const AdminDashboard = () => {
                     Bring to the table win-win survival strategies to ensure proactive domination. At the end of the day, going forward, a new normal that has evolved from generation X is on the runway heading towards a streamlined cloud solution.
                 </div>
             </div>
-            <div className="row" style={{ width: '90%', margin: '0 auto' }}>
+            <div className="row">
                 {services.map((service, index) => (
                     <ServiceBlock
                         key={index}
