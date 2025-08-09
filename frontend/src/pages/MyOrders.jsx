@@ -22,7 +22,7 @@ const MyOrders = () => {
         localStorage.setItem("customer", JSON.stringify(customerData));
         setCustomer(customerData);
         setIsLogged(true);
-        window.location.href = `/admin/customer-profile/${customerData.customer_id}`;
+        window.location.href = `/customer-profile/${customerData.customer_id}`;
       } else {
         setError(response.message || "Login failed");
       }
@@ -32,7 +32,7 @@ const MyOrders = () => {
   };
 
   if (isLogged && customer?.customer_token && customer?.customer_id) {
-    window.location.href = `/admin/customer-profile/${customer.customer_id}`;
+    window.location.href = `/customer-profile/${customer.customer_id}`;
     return null;
   }
 

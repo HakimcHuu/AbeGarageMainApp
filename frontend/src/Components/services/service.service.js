@@ -36,11 +36,14 @@ const addService = async (serviceData) => {
         body: JSON.stringify(serviceData)
     });
 
+    const json = await response.json().catch(() => ({}));
+
     if (!response.ok) {
-        throw new Error('Failed to add service');
+        throw new Error(json.message || 'Failed to add service');
     }
 
-    return response.json();
+    // Return only the created service object so the UI can update immediately
+    return json.service;
 };
 
 // Function to delete a service
@@ -71,11 +74,14 @@ const updateService = async (serviceId, serviceData) => {
         body: JSON.stringify(serviceData)
     });
 
+    const json = await response.json().catch(() => ({}));
+
     if (!response.ok) {
-        throw new Error('Failed to update service');
+        throw new Error(json.message || 'Failed to update service');
     }
 
-    return response.json();
+    // Return only the updated service object so the UI can update immediately
+    return json.service;
 };
 
 // Export the service functions

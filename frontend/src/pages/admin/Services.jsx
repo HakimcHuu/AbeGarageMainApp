@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
-import AdminMenu from '../../Components/Admin/AdminMenu/AdminMenu'; 
 import AddServiceForm from '../../Components/Admin/AddServiceForm/AddServiceForm';
-import Service from '../../Components/services/service.service'; 
+import Service from '../../Components/services/service.service';
+import AdminMenu from "../../Components/Admin/AdminMenu/AdminMenu";
 
 const Services = () => {
     const [services, setServices] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
-    const [noServices, setNoServices] = useState(false); 
+    const [noServices, setNoServices] = useState(false);
     const [editingService, setEditingService] = useState(null);
 
     useEffect(() => {
@@ -64,13 +64,13 @@ const Services = () => {
     };
 
     return (
-        <div className="px-2">
-            <div className="container-fluid admin-pages">
-                <div className="row">
-                    <div className="col-md-3 admin-left-side">
-                        <AdminMenu />
-                    </div>
-                    <div className="services-section col-md-9 px-4">
+        <div className="container-fluid admin-pages">
+            <div className="row">
+                <div className="col-md-3 admin-left-side">
+                    <AdminMenu />
+                </div>
+                <div className="col-md-9 admin-right-side">
+                    <div className="services-section px-4">
                         <div className="flex items-center gap-4 mb-2">
                             <h2 className="page-titles text-3xl font-bold mb-4">Services we provide </h2>
                             <div className="h-1 w-16 bg-red-500 mr-2 mt-2"></div>

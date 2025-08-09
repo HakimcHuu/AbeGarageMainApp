@@ -34,11 +34,11 @@ const AddServiceForm = ({ editingService, onServiceUpdated }) => {
           editingService.service_id,
           serviceData
         );
-        onServiceUpdated(updatedService);
+        onServiceUpdated(updatedService?.service || updatedService);
       } else {
         // Add new service
         const newService = await Service.addService(serviceData);
-        onServiceUpdated(newService);
+        onServiceUpdated(newService?.service || newService);
       }
 
       // Clear the form inputs

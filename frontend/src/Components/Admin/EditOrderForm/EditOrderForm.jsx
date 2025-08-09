@@ -1,15 +1,19 @@
 import { useState, useEffect } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import Service from "../../services/order.service";
 import ServiceSelection from "../AddServiceForm/SelectService";
+import './EditOrderForm.css';
 
 const EditOrderForm = () => {
   const location = useLocation();
-  const { orderData } = location.state || {}; // Get the orderData from the navigation state
+  const { orderId: routeOrderId } = useParams();
+  const { orderData } = location.state || {}; // May come from list shortcut
 
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [selectedVehicle, setSelectedVehicle] = useState(null);
   const [selectedServices, setSelectedServices] = useState([]);
+  const [serviceAssignments, setServiceAssignments] = useState([]);
+  const [employees, setEmployees] = useState([]);
   const [additionalRequest, setAdditionalRequest] = useState("");
   const [orderPrice, setOrderPrice] = useState("");
   const [estimatedCompletionDate, setEstimatedCompletionDate] = useState("");
@@ -17,43 +21,77 @@ const EditOrderForm = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (orderData) {
+    const initFromData = (data) => {
       console.log('Order Data:', orderData); // Debugging: Log the orderData received
   
       setSelectedCustomer({
-        customer_first_name: orderData.customer_first_name,
-        customer_last_name: orderData.customer_last_name,
-        customer_email: orderData.customer_email,
-        customer_phone: orderData.customer_phone,
-        active_customer: orderData.active_customer,
+        customer_first_name: data.customer_first_name,
+        customer_last_name: data.customer_last_name,
+        customer_email: data.customer_email,
+        customer_phone: data.customer_phone,
+        active_customer: data.active_customer,
       });
   
       setSelectedVehicle({
-        vehicle_make: orderData.vehicle_make,
-        vehicle_model: orderData.vehicle_model,
-        vehicle_year: orderData.vehicle_year,
-        vehicle_type: orderData.vehicle_type,
-        vehicle_mileage: orderData.vehicle_mileage,
-        vehicle_tag: orderData.vehicle_tag,
-        vehicle_serial: orderData.vehicle_serial,
+        vehicle_make: data.vehicle_make,
+        vehicle_model: data.vehicle_model,
+        vehicle_year: data.vehicle_year,
+        vehicle_type: data.vehicle_type,
+        vehicle_mileage: data.vehicle_mileage,
+        vehicle_tag: data.vehicle_tag,
+        vehicle_serial: data.vehicle_serial,
       });
   
       // Check and populate additionalRequest, orderPrice, and estimatedCompletionDate
-      setAdditionalRequest(orderData.additional_request || "");
-      setOrderPrice(orderData.order_total_price || "");
-      setEstimatedCompletionDate(orderData.estimated_completion_date || "");
+      setAdditionalRequest(data.additional_request || "");
+      setOrderPrice(data.order_total_price || "");
+      setEstimatedCompletionDate(data.estimated_completion_date || "");
   
       // If selectedServices exist in orderData, set them in the state
-      if (orderData.selectedServices) {
-        const formattedServices = orderData.selectedServices.map((service) => ({
+      if (data.services || data.selectedServices) {
+        const src = data.services || data.selectedServices;
+        const formattedServices = src.map((service) => ({
           service_id: service.service_id,
           service_completed: service.service_completed || 0,
         }));
         setSelectedServices(formattedServices);
-        console.log('Pre-selected services:', formattedServices); // Debugging: Log the selected services
+        // Initialize empty assignments (no employee) for now
+        setServiceAssignments(formattedServices.map(s => ({ service_id: s.service_id, employee_id: null })));
+        console.log('Pre-selected services:', formattedServices);
       }
+    };
+
+    if (orderData) {
+      initFromData(orderData);
+    } else if (routeOrderId) {
+      // Fallback: fetch by id
+      (async () => {
+        try {
+          const data = await Service.getOrderDetails(routeOrderId);
+          initFromData({ ...data, order_id: routeOrderId, selectedServices: data.services || [] });
+        } catch (e) {
+          console.error('Failed to load order details for editing:', e);
+        }
+      })();
     }
-  }, [orderData]);
+  }, [orderData, routeOrderId]);
+
+  // Load employees if there are services to assign
+  useEffect(() => {
+    const loadEmployees = async () => {
+      try {
+        const emps = await Service.getEmployeesByRole(1);
+        setEmployees(emps || []);
+      } catch (e) {
+        console.error('Failed to load employees for assignment', e);
+      }
+    };
+    if (selectedServices.length > 0) {
+      loadEmployees();
+    } else {
+      setEmployees([]);
+    }
+  }, [selectedServices]);
   
 
   const handleSelectServices = (services) => {
@@ -62,37 +100,48 @@ const EditOrderForm = () => {
       service_completed: 0,
     }));
     setSelectedServices(updatedServiceData);
+    setServiceAssignments(updatedServiceData.map(s => ({ service_id: s.service_id, employee_id: null })));
+  };
+
+  const handleAssignEmployeeToService = (serviceId, employeeId) => {
+    const parsed = employeeId === '' ? null : Number(employeeId);
+    setServiceAssignments(prev =>
+      prev.map(a => (String(a.service_id) === String(serviceId) ? { ...a, employee_id: parsed } : a))
+    );
   };
 
   const handleUpdateOrder = async () => {
     try {
       const orderInfoData = {
-        order_total_price: orderPrice,
+        order_total_price: Number(orderPrice) || 0,
         additional_request: additionalRequest,
         estimated_completion_date: estimatedCompletionDate,
-        additional_requests_completed: 0,
       };
 
       // Update order using Service
-      await Service.updateOrder({
-        orderId: orderData.order_id, // pass the order id for the update
+      const idToUpdate = orderData?.order_id || routeOrderId;
+      const resp = await Service.updateOrder({
+        orderId: idToUpdate,
         orderInfoData,
-        orderServiceData: selectedServices,
+        orderServiceData: serviceAssignments.length ? serviceAssignments : selectedServices,
       });
 
+      if (!resp || resp.status !== 'success') {
+        throw new Error('Update failed');
+      }
       alert("Order updated successfully.");
-      navigate("/admin/orders");
+      navigate(`/admin/orders/${idToUpdate}`);
     } catch (err) {
       console.error("Error updating the order:", err);
     }
   };
 
   return (
-    <div className="container">
-      <h2 className="mb-4">Edit Order</h2>
+    <div className="edit-order-container">
+      <h2 className="page-title">Edit Order</h2>
 
       {selectedCustomer && (
-        <div className="selected-customer-details card p-3">
+        <div className="card-panel">
           <h3>{`${selectedCustomer.customer_first_name} ${selectedCustomer.customer_last_name}`}</h3>
           <p>Email: {selectedCustomer.customer_email}</p>
           <p>Phone Number: {selectedCustomer.customer_phone}</p>
@@ -101,47 +150,95 @@ const EditOrderForm = () => {
       )}
 
       {selectedVehicle && (
-        <div className="selected-vehicle-details card p-3 mt-4">
-          <h4>{selectedVehicle.vehicle_model}</h4>
-          <p>Vehicle Year: {selectedVehicle.vehicle_year}</p>
-          <p>Vehicle Type: {selectedVehicle.vehicle_type}</p>
-          <p>Vehicle Mileage: {selectedVehicle.vehicle_mileage}</p>
-          <p>Tag: {selectedVehicle.vehicle_tag}</p>
-          <p>Plate: {selectedVehicle.vehicle_serial}</p>
+        <div className="card-panel mt-4">
+          <h4 className="section-title">Vehicle</h4>
+          <div className="vehicle-grid">
+            <div><strong>Model:</strong> {selectedVehicle.vehicle_model}</div>
+            <div><strong>Year:</strong> {selectedVehicle.vehicle_year}</div>
+            <div><strong>Type:</strong> {selectedVehicle.vehicle_type}</div>
+            <div><strong>Mileage:</strong> {selectedVehicle.vehicle_mileage}</div>
+            <div><strong>Tag:</strong> {selectedVehicle.vehicle_tag}</div>
+            <div><strong>Plate:</strong> {selectedVehicle.vehicle_serial}</div>
+          </div>
         </div>
       )}
 
       {/* Service selection */}
-      <ServiceSelection
-        onSelectServices={handleSelectServices}
-        selectedServices={selectedServices.map((service) => service.service_id)}
-      />
+      <div className="card-panel mt-4">
+        <h4 className="section-title">Select Services</h4>
+        <ServiceSelection
+          onSelectServices={handleSelectServices}
+          selectedServices={selectedServices.map((service) => service.service_id)}
+        />
+
+        {selectedServices.length > 0 && (
+          <div className="mt-3">
+            <h5 className="section-subtitle">Assignments</h5>
+            <div className="assign-table">
+              <div className="assign-header">
+                <div>Service</div>
+                <div>Assign To</div>
+              </div>
+              {selectedServices.map((svc) => (
+                <div key={svc.service_id} className="assign-row">
+                  <div>{svc.service_name ?? `Service #${svc.service_id}`}</div>
+                  <div>
+                    <select
+                      className="assign-select"
+                      value={(serviceAssignments.find(a => String(a.service_id) === String(svc.service_id))?.employee_id ?? '')}
+                      onChange={(e) => handleAssignEmployeeToService(svc.service_id, e.target.value)}
+                    >
+                      <option value="">Assign employee</option>
+                      {employees.map(emp => (
+                        <option key={emp.employee_id} value={emp.employee_id}>
+                          {emp.employee_first_name} {emp.employee_last_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Additional Request, Price, and Estimated Completion Date Inputs */}
-      <input
-        type="text"
-        className="form-control mt-3"
-        placeholder="Enter service description"
-        value={additionalRequest}
-        onChange={(e) => setAdditionalRequest(e.target.value)}
-      />
-      <input
-        type="number"
-        className="form-control mt-3"
-        placeholder="Enter price"
-        value={orderPrice}
-        onChange={(e) => setOrderPrice(e.target.value)}
-      />
-      <input
-        type="date"
-        className="form-control mt-3"
-        value={estimatedCompletionDate}
-        onChange={(e) => setEstimatedCompletionDate(e.target.value)}
-      />
+      <div className="card-panel mt-4">
+        <h4 className="section-title">Order Info</h4>
+        <div className="form-grid">
+          <div className="form-item">
+            <label>Notes</label>
+            <textarea
+              rows={3}
+              value={additionalRequest}
+              onChange={(e) => setAdditionalRequest(e.target.value)}
+            />
+          </div>
+          <div className="form-item">
+            <label>Total Price</label>
+            <input
+              type="number"
+              value={orderPrice}
+              onChange={(e) => setOrderPrice(e.target.value)}
+            />
+          </div>
+          <div className="form-item">
+            <label>Estimated Completion Date</label>
+            <input
+              type="date"
+              value={estimatedCompletionDate?.slice(0,10) || ''}
+              onChange={(e) => setEstimatedCompletionDate(e.target.value)}
+            />
+          </div>
+        </div>
+      </div>
 
-      <button className="btn btn-danger mt-4" onClick={handleUpdateOrder}>
-        Update Order
-      </button>
+      <div className="actions">
+        <button className="btn-primary" onClick={handleUpdateOrder}>
+          Update Order
+        </button>
+      </div>
     </div>
   );
 };

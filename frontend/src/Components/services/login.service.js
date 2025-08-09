@@ -26,12 +26,27 @@ const logInCustomer = async (formData) => {
   return response;
 };
 
-// A function to log out the employee or customer based on their type
-const logOut = (userType) => {
-  if (userType === "employee") {
-    localStorage.removeItem("employee_token");
-  } else if (userType === "customer") {
-    localStorage.removeItem("customer_token");
+/**
+ * Log out the employee or customer.
+ * If serverClear is true, also notify the backend to clear active session role state.
+ */
+const logOut = async (userType, serverClear = false) => {
+  try {
+    if (serverClear) {
+      await fetch(`${api_url}/api/logout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: userType }),
+      }).catch(() => {}); // ignore server errors on client logout
+    }
+  } finally {
+    if (userType === "employee") {
+      localStorage.removeItem("employee_token");
+      localStorage.removeItem("employee"); // also clear stored employee object
+    } else if (userType === "customer") {
+      localStorage.removeItem("customer_token");
+      localStorage.removeItem("customer");
+    }
   }
 };
 

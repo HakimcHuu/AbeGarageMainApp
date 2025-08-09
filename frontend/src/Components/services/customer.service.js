@@ -1,12 +1,12 @@
 // Import from the env
 const api_url = import.meta.env.VITE_API_URL;
 // A function to send post request to create a new customer
-const createCustomer = async (formData, loggedInCustomerToken) => {
+const createCustomer = async (formData, loggedInEmployeeToken) => {
     const requestOptions = {
         method: "POST",
         headers: {
         "Content-Type": "application/json",
-        "x-access-token": loggedInCustomerToken,
+        "x-access-token": loggedInEmployeeToken,
         },
         body: JSON.stringify(formData),
     };
@@ -58,12 +58,12 @@ const deleteCustomer = async (customerId, token) => {
 };
 
 // A function to send put request to update a customer
-const updateCustomer = async (customerId, formData, loggedInCustomerToken) => {
+const updateCustomer = async (customerId, formData, loggedInEmployeeToken) => {
     const requestOptions = {
         method: "PUT",
         headers: {
         "Content-Type": "application/json",
-        "x-access-token": loggedInCustomerToken,
+        "x-access-token": loggedInEmployeeToken,
         },
         body: JSON.stringify(formData),
     };

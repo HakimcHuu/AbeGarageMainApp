@@ -8,4 +8,7 @@ router.post("/employee/login", loginControllers.logInEmployee);
 // Customer login route
 router.post("/customer/login", loginControllers.logInCustomer);
 
+// Logout route (clears exclusive active role on server)
+router.post("/logout", loginControllers.logout);
+
 module.exports = router;

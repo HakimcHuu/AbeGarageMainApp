@@ -63,7 +63,23 @@ const router = require("./routes");
 
 // For development, '*' might be okay, but not for production.
 
-app.use(cors({ origin: "*", optionsSuccessStatus: 200 })); // Adjust origin for production
+// CORS configuration to support custom headers and preflight
+const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "http://localhost:5173";
+app.use(
+  cors({
+    origin: FRONTEND_ORIGIN === "*" ? true : FRONTEND_ORIGIN,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "x-access-token",
+      "x-accesstoken",
+      "x-access_token",
+    ],
+    optionsSuccessStatus: 204,
+  })
+);
+app.options("*", cors());
 
 app.use(express.json());
 

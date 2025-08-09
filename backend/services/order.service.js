@@ -1,342 +1,695 @@
-const db = require('../config/db.config');
+const db = require("../config/db.config");
+
+// Helper function to get service price by ID
+const getServicePrice = async (serviceId) => {
+  try {
+    const idNum = Number(serviceId);
+    const rows = await db.query(
+      "SELECT service_price FROM common_services WHERE service_id = ?",
+      [idNum]
+    );
+    if (!rows || rows.length === 0) {
+      console.error(
+        `Service with ID ${serviceId} not found in common_services`
+      );
+      return 0;
+    }
+    return rows[0].service_price || 0;
+  } catch (error) {
+    console.error(`Error fetching price for service ${serviceId}:`, error);
+    throw error;
+  }
+};
 
 // Service to handle creating the entire order (order + order details + services)
 const createOrder = async (orderData, orderInfoData, orderServiceData) => {
-    try {
-        let createdOrder = {};
+  try {
+    console.log("Starting order creation");
+    let createdOrder = {};
 
-      // Insert the main order details into the `orders` table
-        const orderInsertQuery = `
-        INSERT INTO orders (customer_id, vehicle_id, employee_id, active_order, order_hash)
-        VALUES (?, ?, ?, ?, ?)
+    // Log the input data for debugging
+    console.log("Order data:", JSON.stringify(orderData, null, 2));
+    console.log("Order info data:", JSON.stringify(orderInfoData, null, 2));
+    console.log(
+      "Order service data:",
+      JSON.stringify(orderServiceData, null, 2)
+    );
+
+    // Normalize status to schema (ENUM of strings)
+    const normalizedOrderStatus =
+      typeof orderData.order_status === "string"
+        ? orderData.order_status
+        : "pending";
+
+    // Insert the main order details into the `orders` table
+    const orderInsertQuery = `
+        INSERT INTO orders (customer_id, vehicle_id, employee_id, active_order, order_hash, order_status)
+        VALUES (?, ?, ?, ?, ?, ?)
         `;
-        const orderResult = await db.query(orderInsertQuery, [
-        orderData.customer_id,
-        orderData.vehicle_id,
-        orderData.employee_id,
-        orderData.active_order,
-        orderData.order_hash,
-        ]);
-    
-        // Get the generated order_id from the orders insert
-        const orderId = orderResult.insertId;
-    
-        // Insert the order information into the `order_info` table
-        const orderInfoInsertQuery = `
+    console.log("Executing order insert query:", orderInsertQuery, [
+      orderData.customer_id,
+      orderData.vehicle_id,
+      orderData.employee_id,
+      orderData.active_order,
+      orderData.order_hash,
+      normalizedOrderStatus, // ENUM expects string
+    ]);
+
+    const orderResult = await db.query(orderInsertQuery, [
+      orderData.customer_id,
+      orderData.vehicle_id,
+      orderData.employee_id,
+      orderData.active_order,
+      orderData.order_hash,
+      normalizedOrderStatus,
+    ]);
+    console.log("Result of orders table insert:", orderResult);
+
+    // Get the generated order_id from the orders insert
+    const orderId = orderResult.insertId;
+    console.log("Created order with ID:", orderId);
+
+    // Insert the order information into the `order_info` table
+    const orderInfoInsertQuery = `
             INSERT INTO order_info (order_id, order_total_price, additional_request, estimated_completion_date, additional_requests_completed)
             VALUES (?, ?, ?, ?, ?)
         `;
-        await db.query(orderInfoInsertQuery, [
-            orderId,
-            orderInfoData.order_total_price,
-            orderInfoData.additional_request,
-            orderInfoData.estimated_completion_date,
-            orderInfoData.additional_requests_completed,
+    console.log("Executing order info insert query:", orderInfoInsertQuery, [
+      orderId,
+      orderInfoData.order_total_price,
+      orderInfoData.additional_request,
+      orderInfoData.estimated_completion_date,
+      orderInfoData.additional_requests_completed,
+    ]);
+    await db.query(orderInfoInsertQuery, [
+      orderId,
+      orderInfoData.order_total_price,
+      orderInfoData.additional_request,
+      orderInfoData.estimated_completion_date,
+      orderInfoData.additional_requests_completed,
+    ]);
+
+    let totalOrderPrice = 0;
+
+    // Process each service in the order to calculate total price and insert services
+    for (const [index, service] of orderServiceData.entries()) {
+      console.log(
+        `Processing service ${index + 1}/${orderServiceData.length}`,
+        service
+      );
+
+      try {
+        // Get the service price from common_services
+        console.log(`Fetching price for service ID: ${service.service_id}`);
+        const servicePrice = await getServicePrice(service.service_id);
+        console.log(
+          `Retrieved price for service ${service.service_id}:`,
+          servicePrice
+        );
+
+        // Add service price to total order price
+        totalOrderPrice += parseFloat(servicePrice);
+
+        // Insert the service with its price
+        const serviceInsertQuery = `
+                INSERT INTO order_services (order_id, service_id, service_price, service_status, service_completed)
+                VALUES (?, ?, ?, ?, ?)
+                `;
+        const params = [
+          orderId,
+          service.service_id,
+          servicePrice,
+          "pending",
+          service.service_completed,
+        ];
+        console.log(
+          "Executing service insert query:",
+          serviceInsertQuery,
+          params
+        );
+
+        const serviceResult = await db.query(serviceInsertQuery, params);
+        const orderServiceId = serviceResult.insertId;
+        console.log(`Created order service with ID: ${orderServiceId}`);
+
+        // Assign employees to each service in the `order_service_employee` table
+        const serviceEmployeeQuery = `
+                INSERT INTO order_service_employee (order_service_id, employee_id, is_primary)
+                VALUES (?, ?, 1)
+                `;
+        console.log("Assigning employee to service:", serviceEmployeeQuery, [
+          orderServiceId,
+          service.employee_id,
         ]);
-    
-      // Insert the services associated with the order into the `order_services` table
-        for (const service of orderServiceData) {
-            const serviceInsertQuery = `
-            INSERT INTO order_services (order_id, service_id, service_completed)
-            VALUES (?, ?, ?)
-            `;
-            const serviceResult = await db.query(serviceInsertQuery, [
-            orderId,
-            service.service_id,
-            service.service_completed,
-            ]);
-    
-            const orderServiceId = serviceResult.insertId;
-    
-            // Assign employees to each service in the `order_service_employee` table
-            const serviceEmployeeQuery = `
-            INSERT INTO order_service_employee (order_service_id, employee_id)
-            VALUES (?, ?)
-            `;
-            await db.query(serviceEmployeeQuery, [orderServiceId, service.employee_id]);
-    
-            // Insert the initial service status into the `order_status` table
-            const orderStatusServiceQuery = `
-            INSERT INTO order_status (order_id, order_service_id, order_status)
-            VALUES (?, ?, ?)
-            `;
-            await db.query(orderStatusServiceQuery, [orderId, orderServiceId, 1]); 
-        }
-    
-      // Insert the overall order status into the `order_status` table
-        const orderStatusQuery = `
-            INSERT INTO order_status (order_id, order_status)
-            VALUES (?, ?)
-        `;
-        await db.query(orderStatusQuery, [orderId, 1]); 
-    
-        createdOrder = { order_id: orderId };
-    
-        
-        return { message: 'Order created successfully', createdOrder };
-    
-        } catch (error) {
-        console.error("Error creating order:", error);
-        throw error;
-        }
-    };
-    
-        
+        await db.query(serviceEmployeeQuery, [
+          orderServiceId,
+          service.employee_id,
+        ]);
 
-// get all orders 
-const getAllOrders = async () => {
-    try {
-        const query = `
-            SELECT 
-            o.order_id, 
-            o.order_date,
-            ci.customer_first_name, 
-            ci.customer_last_name,
-            c.customer_email, 
-            ci.customer_phone,
-            v.vehicle_make, 
-            v.vehicle_model, 
-            v.vehicle_year, 
-            v.vehicle_tag,
-            v.vehicle_mileage,
-            e.employee_first_name, 
-            e.employee_last_name,
-
-            -- Determine overall order status:
-            CASE
-                -- If all services are completed, set overall status to "Completed" (status = 3)
-                WHEN SUM(os_service.order_status = 3) = COUNT(os_service.order_service_id) THEN 3
-                -- If any service is either "In Progress" (status = 2) or "Completed" (status = 3), set overall status to "In Progress" (status = 2)
-                WHEN SUM(os_service.order_status = 2) > 0 OR SUM(os_service.order_status = 3) > 0 THEN 2
-                -- Otherwise, if all services are "Received" (status = 1), set overall status to "Received" (status = 1)
-                ELSE 1
-            END AS order_status,
-
-            oi.order_total_price,  
-            oi.estimated_completion_date,  
-            GROUP_CONCAT(DISTINCT cs.service_name SEPARATOR ', ') AS service_name,
-            GROUP_CONCAT(DISTINCT cs.service_description SEPARATOR '; ') AS service_descriptions,
-            oi.additional_request
-            FROM orders o
-            JOIN customer_info ci ON o.customer_id = ci.customer_id
-            JOIN customer c ON ci.customer_id = c.customer_id
-            JOIN customer_vehicle_info v ON o.vehicle_id = v.vehicle_id
-            JOIN order_services os ON o.order_id = os.order_id  -- Use the order_services table to track services
-            LEFT JOIN common_services cs ON os.service_id = cs.service_id
-            JOIN employee_info e ON o.employee_id = e.employee_id 
-            JOIN order_info oi ON o.order_id = oi.order_id
-
-            -- Fetch service-level statuses
-            LEFT JOIN order_status os_service ON os.order_service_id = os_service.order_service_id
-
-            -- Group by necessary columns
-            GROUP BY 
-            o.order_id, 
-            o.order_date,
-            ci.customer_first_name, 
-            ci.customer_last_name,
-            c.customer_email, 
-            ci.customer_phone,
-            v.vehicle_make, 
-            v.vehicle_model, 
-            v.vehicle_year, 
-            v.vehicle_tag,
-            v.vehicle_mileage,
-            e.employee_first_name, 
-            e.employee_last_name,
-            oi.order_total_price,
-            oi.estimated_completion_date, 
-            oi.additional_request;
-        `;
-
-        const rows = await db.query(query);
-        console.log("Orders fetched from DB:", rows);
-        return rows;
-    } catch (error) {
-        console.error("Error fetching orders from DB:", error);
-        throw error;
+        // Insert the initial service status into the `order_status_history` table
+        const orderStatusServiceQuery = `
+                INSERT INTO order_status_history (order_id, order_service_id, status, changed_by)
+                VALUES (?, ?, 'pending', ?)
+                `;
+        console.log(
+          "Creating initial service status:",
+          orderStatusServiceQuery,
+          [orderId, orderServiceId, orderData.employee_id]
+        );
+        await db.query(orderStatusServiceQuery, [
+          orderId,
+          orderServiceId,
+          orderData.employee_id,
+        ]);
+      } catch (serviceError) {
+        console.error(
+          `Error processing service ${service.service_id}:`,
+          serviceError
+        );
+        throw serviceError;
+      }
     }
+
+    // Update the order_info with the calculated total price
+    const updateOrderInfoQuery = `
+            UPDATE order_info
+            SET order_total_price = ?
+            WHERE order_id = ?
+        `;
+    console.log("Updating order info with total price:", updateOrderInfoQuery, [
+      totalOrderPrice,
+      orderId,
+    ]);
+    await db.query(updateOrderInfoQuery, [totalOrderPrice, orderId]);
+
+    // Insert the overall order status into the `order_status_history` table
+    const orderStatusQuery = `
+            INSERT INTO order_status_history (order_id, status, changed_by)
+            VALUES (?, ?, ?)
+        `;
+    console.log("Creating initial order status:", orderStatusQuery, [
+      orderId,
+      normalizedOrderStatus,
+      orderData.employee_id,
+    ]);
+    await db.query(orderStatusQuery, [
+      orderId,
+      normalizedOrderStatus,
+      orderData.employee_id,
+    ]);
+
+    console.log("Order created successfully");
+    createdOrder = { order_id: orderId };
+    return { message: "Order created successfully", createdOrder };
+  } catch (error) {
+    // Log detailed error information
+    console.error("Error in createOrder:", {
+      message: error.message,
+      code: error.code,
+      errno: error.errno,
+      sql: error.sql,
+      sqlMessage: error.sqlMessage,
+      sqlState: error.sqlState,
+      stack: error.stack,
+    });
+
+    const errorMessage =
+      error.sqlMessage || error.message || "Unknown error occurred";
+    const dbError = new Error(`Database error: ${errorMessage}`);
+    dbError.originalError = error;
+    throw dbError;
+  }
 };
 
+// get all orders
+const getAllOrders = async () => {
+  try {
+    // First, check if there are any orders in the database
+    const checkOrdersQuery = `SELECT COUNT(*) as count FROM orders`;
+    const countResult = await db.query(checkOrdersQuery);
+    console.log(`Total orders in database: ${countResult[0].count}`);
 
-    
+    // If no orders, return empty array
+    if (countResult[0].count === 0) {
+      console.log("No orders found in the database");
+      return [];
+    }
+
+    // Get all orders with detailed logging
+    const query = `
+            SELECT
+                o.order_id,
+                o.order_date,
+                o.order_status,
+                o.customer_id,
+                o.vehicle_id,
+                o.employee_id,
+                ci.customer_first_name,
+                ci.customer_last_name,
+                c.customer_email,
+                ci.customer_phone,
+                v.vehicle_make,
+                v.vehicle_model,
+                v.vehicle_year,
+                v.vehicle_license_plate,
+                v.vehicle_vin,
+                v.vehicle_mileage,
+                e.employee_first_name,
+                e.employee_last_name,
+                oi.order_total_price,
+                oi.estimated_completion_date,
+                oi.additional_request,
+                svc.service_items
+            FROM orders o
+            LEFT JOIN customer_info ci ON o.customer_id = ci.customer_id
+            LEFT JOIN customer c ON ci.customer_id = c.customer_id
+            LEFT JOIN customer_vehicle_info v ON o.vehicle_id = v.vehicle_id
+            LEFT JOIN employee_info e ON o.employee_id = e.employee_id
+            LEFT JOIN order_info oi ON o.order_id = oi.order_id
+            LEFT JOIN (
+                SELECT 
+                    os.order_id,
+                    GROUP_CONCAT(DISTINCT CONCAT(cs.service_id, ':', cs.service_name, ':', os.service_price) ORDER BY cs.service_name SEPARATOR '|') AS service_items
+                FROM order_services os
+                LEFT JOIN common_services cs ON os.service_id = cs.service_id
+                GROUP BY os.order_id
+            ) svc ON svc.order_id = o.order_id
+            ORDER BY o.order_date DESC;
+        `;
+
+    console.log("Executing getAllOrders query");
+    const rows = await db.query(query);
+    console.log(`Query returned ${rows.length} rows`);
+
+    if (rows.length === 0) {
+      console.log("No orders found with the current query");
+      return [];
+    }
+
+    // Log first few orders for debugging
+    console.log(
+      "First few orders from query:",
+      JSON.stringify(rows.slice(0, 3), null, 2)
+    );
+
+    // Format the response
+    const formattedOrders = rows.map((row) => {
+      // Map order_status strings to numeric codes expected by frontend
+      const statusMap = {
+        pending: 1,
+        in_progress: 2,
+        completed: 3,
+        ready_for_pickup: 4,
+        done: 5,
+        cancelled: 6,
+      };
+      const normalizedStatus =
+        typeof row.order_status === "string"
+          ? statusMap[row.order_status] ?? 1
+          : row.order_status ?? 1;
+
+      // Parse service_items into structured array
+      const services = (row.service_items || "")
+        .split("|")
+        .filter(Boolean)
+        .map((item) => {
+          const [idStr, name, priceStr] = item.split(":");
+          return {
+            service_id: Number(idStr),
+            service_name: name,
+            service_price: parseFloat(priceStr || "0") || 0,
+          };
+        });
+
+      return {
+        order_id: row.order_id,
+        order_date: row.order_date,
+        order_status: normalizedStatus,
+        customer_first_name: row.customer_first_name || "N/A",
+        customer_last_name: row.customer_last_name || "",
+        customer_email: row.customer_email || "",
+        customer_phone: row.customer_phone || "",
+        vehicle_make: row.vehicle_make || "N/A",
+        vehicle_model: row.vehicle_model || "N/A",
+        vehicle_year: row.vehicle_year || "",
+        vehicle_license_plate: row.vehicle_license_plate || "",
+        vehicle_vin: row.vehicle_vin || "",
+        vehicle_mileage: row.vehicle_mileage || 0,
+        employee_first_name: row.employee_first_name || "N/A",
+        employee_last_name: row.employee_last_name || "",
+        order_total_price: parseFloat(row.order_total_price) || 0,
+        estimated_completion_date: row.estimated_completion_date,
+        additional_request: row.additional_request || "",
+        services,
+      };
+    });
+
+    console.log(`Returning ${formattedOrders.length} formatted orders`);
+    return formattedOrders;
+  } catch (error) {
+    console.error("Error in getAllOrders:", error);
+    // Return an empty array instead of throwing to prevent frontend crash
+    return [];
+  }
+};
+
 // get all services ordered in one order
 const getAllServicesForOrder = async (orderId) => {
-    const query = `SELECT service_completed FROM order_services WHERE order_id = ?`;
-    const rows = await db.query(query, [orderId]);
-    return rows; 
+  const query = `SELECT service_completed FROM order_services WHERE order_id = ?`;
+  const rows = await db.query(query, [orderId]);
+  return rows;
 };
 
-
-// get order by Id 
+// get order by Id
 const getOrderById = async (orderId) => {
-    try {
-        const query = `
+  try {
+    // Base order info
+    const baseQuery = `
             SELECT 
-            o.order_id, 
-            o.order_date, 
-            ci.customer_first_name, 
-            ci.customer_last_name, 
-            c.customer_email, 
-            ci.customer_phone, 
-            v.vehicle_make, 
-            v.vehicle_model, 
-            v.vehicle_year, 
-            v.vehicle_tag, 
-            v.vehicle_mileage,
-            e.employee_first_name, 
-            e.employee_last_name,
-            oi.order_total_price, 
-            oi.estimated_completion_date, 
-            oi.additional_request,  
-            c.active_customer,
-    
-            -- Dynamically calculate the overall order status:
-            CASE 
-                WHEN SUM(os_service.order_status = 2) > 0 THEN 2 -- If any service is "In Progress"
-                WHEN SUM(os_service.order_status = 3) = COUNT(os_service.order_service_id) THEN 3 -- If all services are "Completed"
-                ELSE 1  -- If all services are still "Received"
-            END AS overall_order_status, -- Dynamically calculate the overall status
-    
-            GROUP_CONCAT(cs.service_name SEPARATOR ', ') AS service_name,
-            GROUP_CONCAT(cs.service_description SEPARATOR '; ') AS service_descriptions,
-            GROUP_CONCAT(os_service.order_status SEPARATOR ', ') AS service_statuses
+                o.order_id,
+                o.order_date,
+                o.order_status,
+                ci.customer_first_name,
+                ci.customer_last_name,
+                c.customer_email,
+                ci.customer_phone,
+                v.vehicle_make,
+                v.vehicle_model,
+                v.vehicle_year,
+                v.vehicle_license_plate,
+                v.vehicle_vin,
+                v.vehicle_mileage,
+                e.employee_first_name,
+                e.employee_last_name,
+                oi.order_total_price,
+                oi.estimated_completion_date,
+                oi.additional_request
             FROM orders o
-            JOIN customer_info ci ON o.customer_id = ci.customer_id
-            JOIN customer c ON ci.customer_id = c.customer_id
-            JOIN customer_vehicle_info v ON o.vehicle_id = v.vehicle_id
-            JOIN employee_info e ON o.employee_id = e.employee_id
-            JOIN order_info oi ON o.order_id = oi.order_id 
-            
-            -- Join for service-level statuses and service completion
-            LEFT JOIN order_services os2 ON o.order_id = os2.order_id
-            LEFT JOIN common_services cs ON os2.service_id = cs.service_id
-            -- Fetch service-level statuses
-            LEFT JOIN order_status os_service ON os2.order_service_id = os_service.order_service_id 
-            
-            -- Separate join for overall order status (where order_service_id is NULL)
-            LEFT JOIN order_status os_overall ON os_overall.order_id = o.order_id AND os_overall.order_service_id IS NULL
-    
+            LEFT JOIN customer_info ci ON o.customer_id = ci.customer_id
+            LEFT JOIN customer c ON ci.customer_id = c.customer_id
+            LEFT JOIN customer_vehicle_info v ON o.vehicle_id = v.vehicle_id
+            LEFT JOIN employee_info e ON o.employee_id = e.employee_id
+            LEFT JOIN order_info oi ON o.order_id = oi.order_id
             WHERE o.order_id = ?
-            GROUP BY 
-            o.order_id, 
-            ci.customer_first_name, 
-            ci.customer_last_name, 
-            c.customer_email, 
-            ci.customer_phone,
-            v.vehicle_make, 
-            v.vehicle_model, 
-            v.vehicle_year, 
-            v.vehicle_tag, 
-            v.vehicle_mileage,
-            e.employee_first_name, 
-            e.employee_last_name, 
-            oi.order_total_price, 
-            oi.estimated_completion_date, 
-            oi.additional_request, 
-            c.active_customer
+            LIMIT 1
         `;
-    
-        const rows = await db.query(query, [orderId]);
-    
-        if (rows.length === 0) {
-            throw new Error("Order not found");
-        }
-    
-        return rows[0]; 
-        } catch (error) {
-        console.error("Error fetching order by ID:", error);
-        throw error;
-        }
+    const rows = await db.query(baseQuery, [orderId]);
+    if (rows.length === 0) {
+      throw new Error("Order not found");
+    }
+    const row = rows[0];
+
+    // Services with assignments
+    const svcRows = await db.query(
+      `SELECT 
+                os.order_service_id,
+                os.service_id,
+                cs.service_name,
+                os.service_price,
+                ose.employee_id,
+                ei.employee_first_name,
+                ei.employee_last_name
+             FROM order_services os
+             LEFT JOIN common_services cs ON cs.service_id = os.service_id
+             LEFT JOIN order_service_employee ose ON ose.order_service_id = os.order_service_id
+             LEFT JOIN employee_info ei ON ei.employee_id = ose.employee_id
+             WHERE os.order_id = ?
+             ORDER BY cs.service_name ASC`,
+      [orderId]
+    );
+
+    const idToService = new Map();
+    for (const svc of svcRows) {
+      const key = svc.order_service_id;
+      if (!idToService.has(key)) {
+        idToService.set(key, {
+          service_id: svc.service_id,
+          service_name: svc.service_name,
+          service_price: parseFloat(svc.service_price || 0) || 0,
+          assigned: [],
+        });
+      }
+      if (svc.employee_id) {
+        idToService.get(key).assigned.push({
+          employee_id: svc.employee_id,
+          employee_first_name: svc.employee_first_name,
+          employee_last_name: svc.employee_last_name,
+        });
+      }
+    }
+    const services = Array.from(idToService.values());
+
+    const statusMap = {
+      pending: 1,
+      in_progress: 2,
+      completed: 3,
+      ready_for_pickup: 4,
+      done: 5,
+      cancelled: 6,
     };
+    const normalizedStatus =
+      typeof row.order_status === "string"
+        ? statusMap[row.order_status] ?? 1
+        : row.order_status ?? 1;
 
+    return {
+      order_id: row.order_id,
+      order_date: row.order_date,
+      order_status: normalizedStatus,
+      customer_first_name: row.customer_first_name || "N/A",
+      customer_last_name: row.customer_last_name || "",
+      customer_email: row.customer_email || "",
+      customer_phone: row.customer_phone || "",
+      vehicle_make: row.vehicle_make || "N/A",
+      vehicle_model: row.vehicle_model || "N/A",
+      vehicle_year: row.vehicle_year || "",
+      vehicle_license_plate: row.vehicle_license_plate || "",
+      vehicle_vin: row.vehicle_vin || "",
+      vehicle_mileage: row.vehicle_mileage || 0,
+      employee_first_name: row.employee_first_name || "N/A",
+      employee_last_name: row.employee_last_name || "",
+      order_total_price: parseFloat(row.order_total_price) || 0,
+      order_subtotal: parseFloat(row.order_total_price) || 0,
+      order_tax: 0,
+      order_total: parseFloat(row.order_total_price) || 0,
+      estimated_completion_date: row.estimated_completion_date,
+      additional_request: row.additional_request || "",
+      services,
+    };
+  } catch (error) {
+    console.error("Error fetching order by ID:", error);
+    throw error;
+  }
+};
 
-    
-//get order id from task 
+//get order id from task
 const getOrderIdFromTask = async (task_id) => {
-    const query = `SELECT order_id FROM order_services WHERE order_service_id = ?`;
-    const rows = await db.query(query, [task_id]);
-    return rows.length > 0 ? rows[0].order_id : null;
-}; 
+  const query = `SELECT order_id FROM order_services WHERE order_service_id = ?`;
+  const rows = await db.query(query, [task_id]);
+  return rows.length > 0 ? rows[0].order_id : null;
+};
 
-// Update an order
+// Update an order (order_info fields)
 async function updateOrder(id, updateData) {
-    const { order_description, estimated_completion_date, completion_date, order_completed } = updateData;
+  // Map incoming names to order_info columns
+  const additional_request =
+    updateData.additional_request ?? updateData.order_description ?? "";
 
-    console.log("Updating order with ID:", id, updateData);  
+  // Normalize various date shapes to MySQL DATETIME (YYYY-MM-DD HH:MM:SS)
+  const toMysqlDateTime = (val) => {
+    if (!val) return null;
+    const d = new Date(val);
+    if (Number.isNaN(d.getTime())) return null;
+    const pad = (n) => String(n).padStart(2, "0");
+    const yyyy = d.getFullYear();
+    const mm = pad(d.getMonth() + 1);
+    const dd = pad(d.getDate());
+    const hh = pad(d.getHours());
+    const mi = pad(d.getMinutes());
+    const ss = pad(d.getSeconds());
+    return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
+  };
 
-    const query = `
-        UPDATE orders
-        SET order_description = ?, estimated_completion_date = ?, completion_date = ?, order_completed = ?
+  const estimated_completion_date = toMysqlDateTime(
+    updateData.estimated_completion_date
+  );
+  const completion_date = toMysqlDateTime(updateData.completion_date);
+  const order_total_price = updateData.order_total_price ?? null;
+
+  console.log("Updating order_info for order ID:", id, {
+    additional_request,
+    estimated_completion_date,
+    completion_date,
+    order_total_price,
+  });
+
+  const query = `
+        UPDATE order_info
+        SET 
+            additional_request = ?,
+            estimated_completion_date = ?,
+            completion_date = ?,
+            order_total_price = COALESCE(?, order_total_price)
         WHERE order_id = ?
     `;
-    try {
-        const result = await db.query(query, [
-            order_description,
-            estimated_completion_date,
-            completion_date,
-            order_completed,
-            id
-        ]);
-        console.log("Order updated in DB with result:", result); 
-        return { message: 'Order updated successfully' };
-    } catch (error) {
-        console.error('Error updating order in DB:', error);
-        throw new Error('Failed to update order');
-    }
+  try {
+    const result = await db.query(query, [
+      additional_request,
+      estimated_completion_date,
+      completion_date,
+      order_total_price,
+      id,
+    ]);
+    console.log("Order info updated in DB with result:", result);
+    return { message: "Order updated successfully" };
+  } catch (error) {
+    console.error("Error updating order info in DB:", error);
+    throw new Error("Failed to update order");
+  }
 }
 
-const updateOrderStatus = async (orderId, status) => {
-    const query = `UPDATE order_status SET order_status = ? WHERE order_id = ? AND order_service_id IS NULL`; 
-    await db.query(query, [status, orderId]);
+const updateOrderStatus = async (orderId, status, changedByEmployeeId) => {
+  // Persist status change in history table using enum strings
+  const statusMap = {
+    1: "pending",
+    2: "in_progress",
+    3: "completed",
+    4: "ready_for_pickup",
+    5: "done",
+    6: "cancelled",
+  };
+  const statusString = statusMap[status] || "pending";
+  const query = `
+        INSERT INTO order_status_history (order_id, status, changed_by)
+        VALUES (?, ?, ?)
+    `;
+  await db.query(query, [orderId, statusString, changedByEmployeeId]);
+
+  // Also update the current status on orders table (used by list/details queries)
+  await db.query(`UPDATE orders SET order_status = ? WHERE order_id = ?`, [
+    statusString,
+    orderId,
+  ]);
 };
 
-// Update services for an order
+// Update services and assignments for an order
 async function updateOrderServices(order_id, services) {
-    console.log("Updating services for order ID:", order_id, "with services:", services);  
-    await db.query('DELETE FROM order_services WHERE order_id = ?', [order_id]);
-    const query = `
-        INSERT INTO order_services (order_id, service_id)
-        VALUES (?, ?)
+  console.log(
+    "Updating services for order ID:",
+    order_id,
+    "with services:",
+    services
+  );
+  // Remove existing services (and cascading assignments)
+  await db.query("DELETE FROM order_services WHERE order_id = ?", [order_id]);
+
+  // Helper to coerce nested/id shapes to number
+  const coerceId = (val) => {
+    if (val == null) return null;
+    if (typeof val === "number" || typeof val === "string") return Number(val);
+    if (typeof val === "object") {
+      if ("service_id" in val) return coerceId(val.service_id);
+      if ("id" in val) return coerceId(val.id);
+    }
+    return null;
+  };
+
+  // Normalize to array of { service_id: number, employee_id?: number|null }
+  const normalized = (services || [])
+    .map((s) => {
+      const rawId = s && typeof s === "object" ? s.service_id : s;
+      const service_id = coerceId(rawId);
+      const employee_id =
+        s && typeof s === "object" && s.employee_id != null
+          ? Number(s.employee_id)
+          : null;
+      return { service_id, employee_id };
+    })
+    .filter(
+      (s) => typeof s.service_id === "number" && !Number.isNaN(s.service_id)
+    );
+
+  if (normalized.length === 0) {
+    console.log("No services provided; order has been cleared of services.");
+    return { message: "Order services updated successfully" };
+  }
+
+  const insertServiceQuery = `
+        INSERT INTO order_services (order_id, service_id, service_price, service_status, service_completed)
+        VALUES (?, ?, ?, 'pending', 0)
+    `;
+  const insertAssignmentQuery = `
+        INSERT INTO order_service_employee (order_service_id, employee_id, is_primary)
+        VALUES (?, ?, 1)
     `;
 
-    try {
-        for (const service_id of services) {
-            console.log("Inserting updated service:", service_id);  
-            await db.query(query, [order_id, service_id]);
-        }
+  try {
+    for (const svc of normalized) {
+      const price = await getServicePrice(svc.service_id);
 
-        console.log("Order services updated successfully for order ID:", order_id);  
-        return { message: 'Order services updated successfully' };
-    } catch (error) {
-        console.error('Error updating order services in DB:', error);
-        throw new Error('Failed to update order services');
+      const result = await db.query(insertServiceQuery, [
+        Number(order_id),
+        Number(svc.service_id),
+        Number(price || 0),
+      ]);
+      const orderServiceId = result.insertId;
+
+      if (svc.employee_id && !Number.isNaN(Number(svc.employee_id))) {
+        await db.query(insertAssignmentQuery, [
+          orderServiceId,
+          Number(svc.employee_id),
+        ]);
+      }
     }
+
+    console.log(
+      "Order services (and assignments) updated successfully for order ID:",
+      order_id
+    );
+    return { message: "Order services updated successfully" };
+  } catch (error) {
+    console.error("Error updating order services in DB:", error);
+    throw new Error("Failed to update order services");
+  }
 }
 
 // Delete an order by its ID
 const deleteOrderById = async (orderId) => {
-    try {
-        await db.query('DELETE FROM order_services WHERE order_id = ?', [orderId]);
-        await db.query('DELETE FROM order_info WHERE order_id = ?', [orderId]);
-        await db.query('DELETE FROM order_status WHERE order_id = ?', [orderId]);
-        await db.query('DELETE FROM orders WHERE order_id = ?', [orderId]);
-        console.log(`Order ${orderId} and associated records deleted from DB`);
-    } catch (error) {
-        console.error(`Error deleting order with ID ${orderId}:`, error);
-        throw error;
-    }
+  try {
+    await db.query("DELETE FROM order_services WHERE order_id = ?", [orderId]);
+    await db.query("DELETE FROM order_info WHERE order_id = ?", [orderId]);
+    await db.query("DELETE FROM order_status_history WHERE order_id = ?", [
+      orderId,
+    ]);
+    await db.query("DELETE FROM orders WHERE order_id = ?", [orderId]);
+    console.log(`Order ${orderId} and associated records deleted from DB`);
+  } catch (error) {
+    console.error(`Error deleting order with ID ${orderId}:`, error);
+    throw error;
+  }
+};
+
+// Status history for an order
+const getOrderStatusHistory = async (orderId) => {
+  const query = `
+        SELECT status_history_id, order_id, order_service_id, status, status_notes, changed_by, created_at
+        FROM order_status_history
+        WHERE order_id = ?
+        ORDER BY created_at ASC, status_history_id ASC
+    `;
+  return db.query(query, [orderId]);
 };
 
 // Export all functions at the end
 module.exports = {
-    createOrder,
-    getAllOrders,
-    getAllServicesForOrder,
-    getOrderById,
-    getOrderIdFromTask,
-    updateOrder,
-    updateOrderStatus,
-    updateOrderServices,
-    deleteOrderById,
+  createOrder,
+  getAllOrders,
+  getAllServicesForOrder,
+  getOrderById,
+  getOrderIdFromTask,
+  updateOrder,
+  updateOrderStatus,
+  updateOrderServices,
+  deleteOrderById,
+  getOrderStatusHistory,
 };

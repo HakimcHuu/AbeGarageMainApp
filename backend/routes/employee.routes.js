@@ -35,10 +35,18 @@ router.get(
 router.get("/employees/role/:roleId", employeeController.getEmployeesByRole);
 
 // Fetch tasks assigned to the employee 
-router.get("/employees/:employee_id/tasks", employeeController.getEmployeeTasks);
+router.get(
+  "/employees/:employee_id/tasks",
+  [authMiddleware.verifyToken],
+  employeeController.getEmployeeTasks
+);
 
 // Update task status
-router.put("/employees/tasks/:task_id/status", employeeController.updateTaskStatus);
+router.put(
+  "/employees/tasks/:task_id/status",
+  [authMiddleware.verifyToken],
+  employeeController.updateTaskStatus
+);
 
 router.put(
   "/employees/:id",

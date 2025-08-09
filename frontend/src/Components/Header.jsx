@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import logo from "../assets/images/logo.png";
 import iconBar from "../assets/template_assets/images/icons/icon-bar.png";
 import { loginService } from "./services/login.service.js";
 import { useAuth } from "../Contexts/AuthContext.jsx";
 import getAuth from "./util/auth.js";
 // import jwtDecode from 'jwt-decode';
+
 function Header(props) {
   const {
     isLogged,
@@ -16,6 +17,9 @@ function Header(props) {
     setCustomer,
     setIsAdmin,
   } = useAuth();
+  
+  const location = useLocation();
+  
   // console.log(customer);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -38,16 +42,24 @@ function Header(props) {
     fetchUserData();
   }, [setEmployee, setCustomer]);
 
-  const logOut = () => {
-    loginService.logOut();
-    setIsLogged(false);
-    localStorage.removeItem("employee");
-    localStorage.removeItem("customer");
-    localStorage.removeItem("employee_token");
-    localStorage.removeItem("customer_token");
-    setEmployee(null);
-    setCustomer(null);
-    if (setIsAdmin) setIsAdmin(false);
+  const logOut = async () => {
+    try {
+      const role = employee ? "employee" : (customer ? "customer" : null);
+      if (role) {
+        await loginService.logOut(role, true); // clear server-side active role, then client
+      } else {
+        await loginService.logOut(); // fallback: client-only clear
+      }
+    } finally {
+      setIsLogged(false);
+      localStorage.removeItem("employee");
+      localStorage.removeItem("customer");
+      localStorage.removeItem("employee_token");
+      localStorage.removeItem("customer_token");
+      setEmployee(null);
+      setCustomer(null);
+      if (setIsAdmin) setIsAdmin(false);
+    }
   };
 
   const openMobileMenu = () => {
@@ -62,6 +74,7 @@ function Header(props) {
 
   const isAdmin = isLogged && employee && employee.employee_role === 3;
   const isEmployee = isLogged && employee && employee.employee_role === 1;
+  const isHomePage = location.pathname === "/";
 
   return (
     <header className="main-header header-style-one">
@@ -112,10 +125,12 @@ function Header(props) {
                     <li><Link to="/about">About Us</Link></li>
                     <li><Link to="/services">Services</Link></li>
                     <li><Link to="/contact">Contact Us</Link></li>
-                      {isAdmin && (
-                        <li><Link to="/admin/admin-landing">Admin</Link></li>
-                      )}
+                    {isAdmin && (
+                      <li><Link to="/admin/admin-landing">Admin</Link></li>
+                    )}
+                    {!isAdmin && isHomePage && (
                       <li><Link to="/my-orders">My Orders</Link></li>
+                    )}
                   </ul>
                 </nav>
               </div>
@@ -182,6 +197,9 @@ function Header(props) {
               <li><Link to="/contact" onClick={closeMobileMenu}>Contact Us</Link></li>
               {isAdmin && (
                 <li><Link to="/admin/admin-landing" onClick={closeMobileMenu}>Admin</Link></li>
+              )}
+              {!isAdmin && isHomePage && (
+                <li><Link to="/my-orders" onClick={closeMobileMenu}>My Orders</Link></li>
               )}
               {isLogged ? (
                 <li><Link to="/" onClick={() => { logOut(); closeMobileMenu(); }}>Log out</Link></li>

@@ -12,11 +12,9 @@ function UpdateCustomerForm() {
     const [customer_first_name, setFirstName] = useState("");
     const [customer_last_name, setLastName] = useState("");
     const [customer_phone, setPhoneNumber] = useState("");
-    const [customer_password, setPassword] = useState("");
     const [active_customer, setActive_customer] = useState(1);
     const [emailError, setEmailError] = useState("");
     const [firstNameRequired, setFirstNameRequired] = useState("");
-    const [passwordError, setPasswordError] = useState("");
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -67,13 +65,6 @@ function UpdateCustomerForm() {
             setEmailError("");
         }
 
-        if (customer_password && customer_password.length < 6) {
-            setPasswordError("Password must be at least 6 characters long");
-            valid = false;
-        } else {
-            setPasswordError("");
-        }
-
         if (!valid) {
             return;
         }
@@ -83,7 +74,6 @@ function UpdateCustomerForm() {
             customer_first_name,
             customer_last_name,
             customer_phone,
-            customer_password,
             active_customer,
         };
 
@@ -170,21 +160,6 @@ function UpdateCustomerForm() {
                         onChange={(event) => setPhoneNumber(event.target.value)}
                         placeholder="Enter phone number"
                     />
-                </Form.Group>
-
-                {/* Password */}
-                <Form.Group controlId="formPassword" className="mt-3">
-                    <Form.Label>Password (optional)</Form.Label>
-                    <Form.Control
-                        type="password"
-                        value={customer_password}
-                        onChange={(event) => setPassword(event.target.value)}
-                        placeholder="Enter password (leave blank if not changing)"
-                        isInvalid={!!passwordError}
-                    />
-                    <Form.Control.Feedback type="invalid">
-                        {passwordError}
-                    </Form.Control.Feedback>
                 </Form.Group>
 
                 {/* Active Customer */}

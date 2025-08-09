@@ -149,17 +149,17 @@ const updateOrderStatus = async (req, res) => {
     const { orderId } = req.params;
     const { status } = req.body;
 
-    if (![1, 2, 3].includes(status)) {
-      return res.status(400).json({ message: "Invalid status value" });
+    const newStatus = Number(status);
+    const isAdmin = Number(req.employee_role) === 3;
+    const allowed = isAdmin ? [1, 2, 3, 4, 5, 6] : [1, 2, 3];
+    if (!allowed.includes(newStatus)) {
+      return res.status(400).json({ message: "Invalid status value for your role" });
     }
 
-    const result = await orderService.updateOrderStatus(orderId, status);
+    const changer = req.employee_id || 1;
+    await orderService.updateOrderStatus(orderId, newStatus, changer);
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ message: "Order not found or status not updated" });
-    }
-
-    res.status(200).json({ message: "Order status updated successfully" });
+    res.status(200).json({ status: 'success', message: "Order status updated successfully" });
   } catch (error) {
     console.error("Error updating order status:", error);
     res.status(500).json({ message: "Error updating order status" });
@@ -170,36 +170,37 @@ const updateOrderStatus = async (req, res) => {
 const updateOrder = async (req, res) => {
   try {
     const { id } = req.params;
-    const {
-      order_description,
-      estimated_completion_date,
-      completion_date,
-      order_completed,
-      order_services
-    } = req.body;
+    const updateData = req.body || {};
 
-    console.log("Updating order with id:", id, req.body);
+    console.log("Updating order with id:", id, updateData);
 
-    // Call service to update order
-    const updatedOrder = await orderService.updateOrder(id, {
-      order_description,
-      estimated_completion_date,
-      completion_date,
-      order_completed,
-    });
+    // Call service to update order_info
+    const updatedOrder = await orderService.updateOrder(id, updateData);
 
     console.log("Order updated successfully for id:", id);
 
     // Update the order services if necessary
-    if (order_services && order_services.length > 0) {
+    if (Array.isArray(updateData.order_services)) {
       console.log("Updating services for order id:", id);
-      await orderService.updateOrderServices(id, order_services);
+      await orderService.updateOrderServices(id, updateData.order_services);
     }
 
-    res.status(200).json({ message: 'Order updated successfully' });
+    res.status(200).json({ status: 'success', message: 'Order updated successfully' });
   } catch (error) {
     console.error('Error updating order:', error);
     res.status(500).json({ message: 'Error updating order' });
+  }
+};
+
+// Get order status history
+const getOrderStatusHistory = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const rows = await orderService.getOrderStatusHistory(orderId);
+    res.status(200).json({ status: 'success', data: rows });
+  } catch (error) {
+    console.error('Error fetching status history:', error);
+    res.status(500).json({ status: 'error', message: 'Failed to fetch status history' });
   }
 };
 
@@ -235,4 +236,5 @@ module.exports = {
   getAllServicesForOrder,
   updateOrderStatus,
   deleteOrderById,
+  getOrderStatusHistory,
 };

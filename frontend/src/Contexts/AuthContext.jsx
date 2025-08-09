@@ -173,6 +173,26 @@ export const AuthProvider = ({ children }) => {
     }
   }, []); // Empty dependency array means this runs once on mount
 
+  // Update isAdmin and isEmployee when employee state changes
+  useEffect(() => {
+    if (employee) {
+      if (employee.employee_role === 3) {
+        setIsAdmin(true);
+        setIsEmployee(true); // An admin is also an employee
+      } else if (employee.employee_role === 1) {
+        setIsAdmin(false);
+        setIsEmployee(true); // A regular employee
+      } else {
+        setIsAdmin(false);
+        setIsEmployee(false);
+      }
+    } else {
+      // If no employee, reset isAdmin and isEmployee
+      setIsAdmin(false);
+      setIsEmployee(false);
+    }
+  }, [employee]); // Run when employee state changes
+
   // Provide the context value for other components
   const value = {
     isLogged,

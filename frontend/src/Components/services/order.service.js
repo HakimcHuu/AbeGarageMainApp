@@ -154,36 +154,77 @@ const createOrder = async (OrderData) => {
 // Fetch all orders
 const getAllOrders = async () => {
   try {
-    console.log("Sending request to API:", `${api_url}/api/orders`);
+    console.log("Sending request to:", `${api_url}/api/orders`);
     
     const response = await fetch(`${api_url}/api/orders`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('employee_token')}`, 
+        'Authorization': `Bearer ${localStorage.getItem('employee_token')}`,
       },
     });
 
-    console.log("Received API response status:", response.status);
+    console.log("Response status:", response.status);
     
     if (!response.ok) {
-      const errorText = await response.text(); 
-      console.error("Error in fetching orders:", errorText);
-      throw new Error('Failed to fetch orders');
+      const errorText = await response.text();
+      console.error("Error response:", errorText);
+      throw new Error(`Failed to fetch orders: ${response.status} ${response.statusText}`);
     }
 
     const data = await response.json();
-    console.log("API response JSON:", data);
+    console.log("Raw API response:", data);
     
-    return data; 
+    // Handle different response formats
+    let orders = [];
+    
+    // Case 1: Data is directly an array
+    if (Array.isArray(data)) {
+      console.log("Response is an array");
+      orders = data;
+    } 
+    // Case 2: Data has a data property that's an array
+    else if (data.data && Array.isArray(data.data)) {
+      console.log("Response has data array");
+      orders = data.data;
+    }
+    // Case 3: Data has a data property with an orders array
+    else if (data.data && data.data.orders && Array.isArray(data.data.orders)) {
+      console.log("Response has data.orders array");
+      orders = data.data.orders;
+    }
+    // Case 4: Data has an orders array
+    else if (data.orders && Array.isArray(data.orders)) {
+      console.log("Response has orders array");
+      orders = data.orders;
+    }
+    
+    console.log(`Extracted ${orders.length} orders from response`);
+    
+    // Ensure we always return the expected format
+    return { 
+      status: "success", 
+      data: { 
+        orders: Array.isArray(orders) ? orders : []
+      } 
+    };
+    
   } catch (error) {
-    console.error('Error fetching orders from API:', error);
-    throw error;
+    console.error('Error in getAllOrders:', error);
+    // Return empty orders array on error to prevent frontend crash
+    return { 
+      status: "error", 
+      message: error.message,
+      data: { 
+        orders: [] 
+      } 
+    };
   }
 };
 
 const getOrderDetails = async (orderId) => { 
   try {
+    console.log(`Fetching order details for order ID: ${orderId}`);
     const response = await fetch(`${api_url}/api/order/${orderId}`, {
       method: 'GET',
       headers: {
@@ -192,21 +233,59 @@ const getOrderDetails = async (orderId) => {
       },
     });
 
+    const data = await response.json();
+    console.log('Order details API response:', data);
+
     if (!response.ok) {
-      const errorMessage = await response.text();
-      throw new Error(`Failed to fetch order details: ${response.status} - ${errorMessage}`);
+      throw new Error(data.message || `Failed to fetch order details: ${response.statusText}`);
     }
 
-    const data = await response.json();
-    if (data && data.status === 'success') {
-      // Correct data is received, return it
-      return data.data; 
-    } else {
-      throw new Error("Order details not found or improperly formatted.");
+    // Handle different response formats
+    if (data.status === 'success') {
+      return data.data || data;
+    } else if (data.order) {
+      return data.order;
+    } else if (Array.isArray(data) && data.length > 0) {
+      return data[0];
     }
     
+    return data;
+    
   } catch (error) {
-    console.error('Error fetching order details from API:', error);
+    console.error('Error in getOrderDetails:', error);
+    throw error;
+  }
+};
+
+// Update an order (info + services)
+const updateOrder = async ({ orderId, orderInfoData, orderServiceData }) => {
+  try {
+    const response = await fetch(`${api_url}/api/order/${orderId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('employee_token')}`,
+      },
+      body: JSON.stringify({
+        // Map to backend expectations; it will update order_info and rebuild services
+        additional_request: orderInfoData?.additional_request ?? '',
+        order_total_price: orderInfoData?.order_total_price ?? null,
+        estimated_completion_date: orderInfoData?.estimated_completion_date ?? null,
+        completion_date: null,
+        order_services: Array.isArray(orderServiceData)
+          ? orderServiceData
+          : [],
+      }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || 'Failed to update order');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error updating order:', error);
     throw error;
   }
 };
@@ -260,13 +339,13 @@ const getAllServicesForOrder = async (orderId) => {
 
 
 // Update the status of an order
-const updateOrderStatus = async (orderId, status) => {
+const updateOrderStatus = async (orderId, status, token) => {
   try {
     const response = await fetch(`${api_url}/api/order/${orderId}/status`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem('employee_token')}`,
+        "x-access-token": token || localStorage.getItem("employee_token") || localStorage.getItem("customer_token"),
       },
       body: JSON.stringify({ status }),
     });
@@ -280,6 +359,25 @@ const updateOrderStatus = async (orderId, status) => {
   } catch (error) {
     console.error("Error in updateOrderStatus:", error);
     throw error;
+  }
+};
+
+// Fetch order status history
+const getOrderStatusHistory = async (orderId) => {
+  try {
+    const response = await fetch(`${api_url}/api/order/${orderId}/status-history`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${localStorage.getItem('employee_token')}`,
+      },
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message || 'Failed to fetch status history');
+    return data.data || [];
+  } catch (error) {
+    console.error('Error fetching order status history:', error);
+    return [];
   }
 };
 
@@ -320,5 +418,6 @@ export default {
   getAllServicesForOrder,
   deleteOrder,
   updateOrderStatus,
+  updateOrder,
+  getOrderStatusHistory,
 };
-

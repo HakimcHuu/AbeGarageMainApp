@@ -1,0 +1,58 @@
+// Centralized order status mapping for consistent labels and colors across the app
+
+const STATUS_MAP = {
+  1: { key: 'received', text: 'Received' },
+  2: { key: 'in_progress', text: 'In Progress' },
+  3: { key: 'completed', text: 'Completed' },
+  4: { key: 'ready_for_pickup', text: 'Ready for Pick Up' },
+  5: { key: 'done', text: 'Done' },
+  6: { key: 'cancelled', text: 'Cancelled' },
+  received: { key: 'received', text: 'Received' },
+  pending: { key: 'pending', text: 'Pending' },
+  in_progress: { key: 'in_progress', text: 'In Progress' },
+  completed: { key: 'completed', text: 'Completed' },
+  ready_for_pickup: { key: 'ready_for_pickup', text: 'Ready for Pick Up' },
+  done: { key: 'done', text: 'Done' },
+  cancelled: { key: 'cancelled', text: 'Cancelled' },
+};
+
+// Unified HEX colors across the app
+const COLOR_HEX = {
+  received: '#2196F3',
+  pending: '#9E9E9E',
+  in_progress: '#FF9800',
+  completed: '#4CAF50',
+  ready_for_pickup: '#3F51B5',
+  done: '#009688',
+  cancelled: '#F44336',
+};
+
+export function normalizeStatus(status) {
+  const rawKey = typeof status === 'string' ? status : STATUS_MAP[Number(status)]?.key;
+  // Treat backend 'pending' as 'received' for unified display
+  const key = rawKey === 'pending' ? 'received' : rawKey;
+  const metaByKey = key ? STATUS_MAP[key] : null;
+  if (metaByKey) return metaByKey;
+  const metaByNum = STATUS_MAP[Number(status)] || STATUS_MAP.received;
+  return metaByNum;
+}
+
+export function getStatusDisplay(status) {
+  const meta = normalizeStatus(status);
+  return { key: meta.key, text: meta.text };
+}
+
+export function getAntdTagProps(status) {
+  const { key, text } = getStatusDisplay(status);
+  const color = COLOR_HEX[key] || '#9E9E9E';
+  return { color, text };
+}
+
+export function getBootstrapBadgeProps(status) {
+  const { key, text } = getStatusDisplay(status);
+  const backgroundColor = COLOR_HEX[key] || '#9E9E9E';
+  const style = { backgroundColor, color: '#fff' };
+  return { style, text };
+}
+
+

@@ -1,24 +1,23 @@
-
-// Import the AddCustomerorm component 
+// Import the AddCustomerorm component
+import { Container, Row, Col } from "react-bootstrap";
+import AdminMenu from "../Components/Admin/AdminMenu/AdminMenu";
 import CustomerInfo from "../Components/customer/CustomerProfile";
-// Import the AdminMenu component 
-import AdminMenu from '../Components/Admin/AdminMenu/AdminMenu';
 
 function CustomerProfile(props) {
-    return (
-        <div>
-        <div className="container-fluid admin-pages">
-            <div className="row">
-            <div className="col-md-3 admin-left-side">
-                <AdminMenu />
-            </div>
-            <div className="col-md-9 admin-right-side">
-                <CustomerInfo/>
-            </div>
-            </div>
-        </div>
-        </div>
-    );
+  return (
+    <div className="admin-pages">
+      <Container fluid>
+        <Row>
+          <Col md={3} className="admin-left-side">
+            <AdminMenu />
+          </Col>
+          <Col md={9} className="admin-right-side">
+            <CustomerInfo />
+          </Col>
+        </Row>
+      </Container>
+    </div>
+  );
 }
 
 export default CustomerProfile;

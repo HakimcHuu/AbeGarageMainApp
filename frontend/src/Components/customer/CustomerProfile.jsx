@@ -1,13 +1,16 @@
 import { useState, useEffect } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useNavigate } from "react-router-dom";
 import customerService from "../../Components/services/customer.service";
-import { Button, Row, Col, Card, Modal, Form } from "react-bootstrap";
+import { Button, Row, Col, Card, Modal, Form, Tab, Tabs, Table, Badge } from "react-bootstrap";
+import { getBootstrapBadgeProps } from "../util/status";
 import AddVehicleForm from "../../Components/Admin/AddVehicleForm/AddVehicleForm";
-const api_url = import.meta.env.VITE_API_URL;
 import { FcFullTrash } from "react-icons/fc";
-import { FaEdit } from "react-icons/fa";
+import { FaEdit, FaUser, FaCar, FaClipboardList, FaArrowLeft } from "react-icons/fa";
+import "./CustomerProfile.css";
+
 const CustomerProfile = () => {
   const { customer_id } = useParams();
+  const navigate = useNavigate();
 
   const [customerData, setCustomerData] = useState(null);
   const [vehicles, setVehicles] = useState([]);
@@ -15,443 +18,670 @@ const CustomerProfile = () => {
   const [showAddVehicleForm, setShowAddVehicleForm] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingVehicle, setEditingVehicle] = useState(null);
+  const [activeTab, setActiveTab] = useState("info");
+  const [loading, setLoading] = useState(true);
 
   const [formData, setFormData] = useState({
     vehicle_make: "",
     vehicle_model: "",
     vehicle_year: "",
+    vehicle_license_plate: "",
+    vehicle_vin: "",
     vehicle_color: "",
-    vehicle_tag: "",
     vehicle_mileage: "",
-    vehicle_serial: "",
+    vehicle_engine_number: "",
+    vehicle_chassis_number: "",
+    vehicle_transmission_type: "Automatic",
+    vehicle_fuel_type: "Gasoline",
+    last_service_date: "",
+    next_service_date: "",
+    insurance_provider: "",
+    insurance_expiry: ""
   });
 
+  // Fetch customer data
   useEffect(() => {
-    const fetchCustomerData = async () => {
+    const fetchData = async () => {
       try {
-        const res = await customerService.getCustomer(customer_id);
-        const data = await res.json();
-        console.log("Customer data response:", data);
-        setCustomerData(data.data);
-      } catch (error) {
-        console.error("Error fetching customer data", error);
-      }
-    };
-
-    fetchCustomerData();
-  }, [customer_id]);
-
-  useEffect(() => {
-    const fetchCustomerVehicles = async () => {
-      try {
-        const res = await customerService.getCustomerVehicles(customer_id);
-        const data = await res.json();
-        console.log("Vehicles data response:", data);
-        if (data.status === "success") {
-          setVehicles(data.data);
-        } else {
-          setVehicles([]);
+        setLoading(true);
+         // Get token (support employee or customer)
+         const token = localStorage.getItem("employee_token") || localStorage.getItem("customer_token");
+        
+        if (!token) {
+          console.error("No authentication token found");
+          setLoading(false);
+          return;
         }
-      } catch (error) {
-        console.error("Error fetching customer vehicles", error);
-      }
-    };
-
-    fetchCustomerVehicles();
-  }, [customer_id]);
-
-  useEffect(() => {
-    const fetchCustomerOrders = async () => {
-      try {
-        const res = await customerService.getCustomerOrders(customer_id);
-        const data = await res.json();
-        console.log("Orders data response:", data);
-        if (data.status === "success") {
-          setOrders(data.data);
-        } else {
-          setOrders([]);
+        
+         const [customerRes, vehiclesRes, ordersRes] = await Promise.all([
+           customerService.getCustomer(customer_id, token),
+           customerService.getCustomerVehicles(customer_id, token),
+           customerService.getCustomerOrders(customer_id, token)
+         ]);
+        
+        // Handle customer data
+        if (!customerRes.ok) {
+          console.error("Failed to fetch customer data:", customerRes.status, customerRes.statusText);
+          throw new Error("Failed to fetch customer data");
         }
+        const customerData = await customerRes.json();
+        console.log("Raw customer data response:", customerData);
+        setCustomerData(customerData.data);
+
+        // Handle vehicles data
+        if (!vehiclesRes.ok) {
+          console.error("Failed to fetch vehicles data:", vehiclesRes.status, vehiclesRes.statusText);
+          throw new Error("Failed to fetch vehicles data");
+        }
+        const vehiclesData = await vehiclesRes.json();
+        console.log("Raw vehicles data response:", vehiclesData);
+        setVehicles(vehiclesData.data || []);
+
+        // Handle orders data
+        if (!ordersRes.ok) {
+          console.error("Failed to fetch orders data:", ordersRes.status, ordersRes.statusText);
+          throw new Error("Failed to fetch orders data");
+        }
+        const ordersData = await ordersRes.json();
+        console.log("Raw orders data response:", ordersData);
+        setOrders(ordersData.data || []);
+
       } catch (error) {
-        console.error("Error fetching customer orders", error);
+        console.error("Error fetching data in CustomerProfile:", error);
+        // Optionally, set an error state to display to the user
+        // setError("Failed to load customer profile. Please try again.");
+      } finally {
+        setLoading(false);
       }
     };
 
-    fetchCustomerOrders();
+    fetchData();
   }, [customer_id]);
 
-  const handleAddVehicleClick = () => {
-    setShowAddVehicleForm(true);
-  };
-
-  const handleVehicleAdded = (newVehicle) => {
-    setVehicles((prevVehicles) => [...prevVehicles, newVehicle]);
-    setShowAddVehicleForm(false);
-  };
-
-  const handleDeleteVehicle = async (vehicleId) => {
-    console.log("Deleting vehicle with ID:", vehicleId);
-    try {
-      const res = await fetch(`${api_url}/api/vehicles/${vehicleId}`, {
-        method: "DELETE",
-      });
-      if (res.ok) {
-        console.log("Vehicle deleted successfully");
-        setVehicles((prevVehicles) =>
-          prevVehicles.filter((vehicle) => vehicle.vehicle_id !== vehicleId)
-        );
-      }
-    } catch (error) {
-      console.error("Error deleting vehicle", error);
-    }
-  };
-
+  // Handler for editing a vehicle
   const handleEditVehicleClick = (vehicle) => {
     setEditingVehicle(vehicle);
-    setFormData(vehicle);
+    setFormData({
+      vehicle_make: vehicle.vehicle_make || "",
+      vehicle_model: vehicle.vehicle_model || "",
+      vehicle_year: vehicle.vehicle_year || "",
+      vehicle_license_plate: vehicle.vehicle_license_plate || "",
+      vehicle_vin: vehicle.vehicle_vin || "",
+      vehicle_color: vehicle.vehicle_color || "",
+      vehicle_mileage: vehicle.vehicle_mileage || "",
+      vehicle_engine_number: vehicle.vehicle_engine_number || "",
+      vehicle_chassis_number: vehicle.vehicle_chassis_number || "",
+      vehicle_transmission_type: vehicle.vehicle_transmission_type || "Automatic",
+      vehicle_fuel_type: vehicle.vehicle_fuel_type || "Gasoline",
+      last_service_date: vehicle.last_service_date || "",
+      next_service_date: vehicle.next_service_date || "",
+      insurance_provider: vehicle.insurance_provider || "",
+      insurance_expiry: vehicle.insurance_expiry || ""
+    });
     setShowEditModal(true);
   };
 
-  /*************  ✨ Codeium Command ⭐  *************/
-  /**
-   * Handles updating a vehicle when the user submits the edit form.
-   *
-   * Sends a PUT request to the API with the updated vehicle data.
-   * If the request is successful, updates the vehicle list with the new data
-   * and closes the edit modal.
-   * If the request fails, logs an error message to the console.
-   *
-   * @function
-   */
-  /******  dfd45ce8-0566-44b5-afb7-15d12aee2758  *******/
-  const handleUpdateVehicle = async () => {
-    try {
-      const res = await fetch(
-        `${api_url}/api/vehicles/${editingVehicle.vehicle_id}`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(formData),
-        }
-      );
-
-      if (res.ok) {
-        console.log("Vehicle updated successfully");
-        // Update the vehicle list
-        setVehicles((prevVehicles) =>
-          prevVehicles.map((vehicle) =>
-            vehicle.vehicle_id === editingVehicle.vehicle_id
-              ? formData
-              : vehicle
-          )
+  // Handler for deleting a vehicle
+  const handleDeleteVehicle = async (vehicleId) => {
+    if (window.confirm("Are you sure you want to delete this vehicle?")) {
+      try {
+        const token = localStorage.getItem("employee_token");
+        const response = await fetch(
+          `${import.meta.env.VITE_API_URL}/api/vehicle/${vehicleId}`,
+          {
+            method: "DELETE",
+            headers: {
+              "Content-Type": "application/json",
+              "x-access-token": token,
+            },
+          }
         );
-        setShowEditModal(false);
-      } else {
-        console.error("Failed to update vehicle");
+        
+        if (response.ok) {
+          // Remove the vehicle from the state
+          setVehicles(prevVehicles =>
+            prevVehicles.filter(vehicle => vehicle.vehicle_id !== vehicleId)
+          );
+          alert("Vehicle deleted successfully");
+        } else {
+          alert("Failed to delete vehicle");
+        }
+      } catch (error) {
+        console.error("Error deleting vehicle:", error);
+        alert("Error deleting vehicle");
       }
-    } catch (error) {
-      console.error("Error updating vehicle", error);
     }
   };
 
-  if (!customerData) {
-    return <div>Loading...</div>;
-  }
-  const handleEdit = (customerData) => {
-    setSelectedCustomer(customerData);
-    setShowEditModal(true);
+  // Handle vehicle form submission
+  const handleVehicleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const token = localStorage.getItem("employee_token");
+      
+      // Format data for submission
+      const vehicleData = {
+        vehicle_make: formData.vehicle_make,
+        vehicle_model: formData.vehicle_model,
+        vehicle_year: formData.vehicle_year ? parseInt(formData.vehicle_year) : null,
+        vehicle_license_plate: formData.vehicle_license_plate || null,
+        vehicle_vin: formData.vehicle_vin || null,
+        vehicle_color: formData.vehicle_color || null,
+        vehicle_mileage: formData.vehicle_mileage ? parseInt(formData.vehicle_mileage) : 0,
+        vehicle_engine_number: formData.vehicle_engine_number || null,
+        vehicle_chassis_number: formData.vehicle_chassis_number || null,
+        vehicle_transmission_type: formData.vehicle_transmission_type || "Automatic",
+        vehicle_fuel_type: formData.vehicle_fuel_type || "Gasoline",
+        last_service_date: formData.last_service_date || null,
+        next_service_date: formData.next_service_date || null,
+        insurance_provider: formData.insurance_provider || null,
+        insurance_expiry: formData.insurance_expiry || null
+      };
+
+      const url = editingVehicle 
+        ? `${import.meta.env.VITE_API_URL}/api/vehicle/${editingVehicle.vehicle_id}`
+        : `${import.meta.env.VITE_API_URL}/api/vehicle`;
+      
+      const method = editingVehicle ? "PUT" : "POST";
+      const body = editingVehicle 
+        ? vehicleData 
+        : { ...vehicleData, customer_id: parseInt(customer_id) };
+
+      console.log("Submitting vehicle data:", { url, method, body });
+      
+      const response = await fetch(url, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          "x-access-token": token,
+        },
+        body: JSON.stringify(body),
+      });
+
+      const result = await response.json();
+      console.log("Vehicle submission response:", result);
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to save vehicle');
+      }
+
+      // Refresh vehicle list
+      const vehiclesRes = await customerService.getCustomerVehicles(customer_id, token);
+      const vehiclesData = await vehiclesRes.json();
+      setVehicles(vehiclesData.data || []);
+      
+      // Reset form and close modal
+      setFormData({
+        vehicle_make: "",
+        vehicle_model: "",
+        vehicle_year: "",
+        vehicle_license_plate: "",
+        vehicle_vin: "",
+        vehicle_color: "",
+        vehicle_mileage: "",
+        vehicle_engine_number: "",
+        vehicle_chassis_number: "",
+        vehicle_transmission_type: "Automatic",
+        vehicle_fuel_type: "Gasoline",
+        last_service_date: "",
+        next_service_date: "",
+        insurance_provider: "",
+        insurance_expiry: ""
+      });
+      
+      // Close the modal by setting both modal states to false
+      setShowAddVehicleForm(false);
+      setShowEditModal(false);
+      setEditingVehicle(null);
+      
+    } catch (error) {
+      console.error("Error submitting vehicle:", error);
+      alert(`Error: ${error.message}`);
+    }
   };
 
-  return (
-    <div className="container mt-4">
+  // Update the vehicle form fields in the modal
+  const renderVehicleForm = ({ onCancel }) => (
+    <Form onSubmit={handleVehicleSubmit}>
       <Row>
-        <Col md={3}>
-          <div className="d-flex flex-column align-items-center position-relative">
-            <div
-              style={{
-                position: "absolute",
-                top: "50px",
-                bottom: "50px",
-                width: "2px",
-                backgroundColor: "#e0e0e0",
-                zIndex: 0,
-              }}
-            ></div>
-
-            <Button
-              variant="danger"
-              className="rounded-circle mb-24"
-              style={{
-                width: "100px",
-                height: "100px",
-                position: "relative",
-                zIndex: 1,
-              }}
-            >
-              Info
-            </Button>
-            <Button
-              variant="danger"
-              className="rounded-circle mb-24"
-              style={{
-                width: "100px",
-                height: "100px",
-                position: "relative",
-                zIndex: 1,
-              }}
-            >
-              Cars
-            </Button>
-            <Button
-              variant="danger"
-              className="rounded-circle"
-              style={{
-                width: "100px",
-                height: "100px",
-                position: "relative",
-                zIndex: 1,
-              }}
-            >
-              Orders
-            </Button>
-          </div>
+        <Col md={6}>
+          <Form.Group className="mb-3">
+            <Form.Label>Make <span className="text-danger">*</span></Form.Label>
+            <Form.Control
+              type="text"
+              name="vehicle_make"
+              value={formData.vehicle_make}
+              onChange={(e) => setFormData({...formData, vehicle_make: e.target.value})}
+              required
+            />
+          </Form.Group>
         </Col>
-        <Col md={9}>
-          <div className="my-6">
-            <h3 className="text-2xl font-bold text-blue-800">
-              Customer: {customerData.customer_first_name}{" "}
-              {customerData.customer_last_name}
-            </h3>
-            <p></p>
-            <strong>Email:</strong>{" "}
-            <span className="text-gray-400">{customerData.customer_email}</span>
-            <p>
-              <strong>Phone Number:</strong>
-              <span className="text-gray-400">
-                {" "}
-                {customerData.customer_phone}
-              </span>
-            </p>
-            <p>
-              <strong>Active Customer:</strong>{" "}
-              <span className="text-gray-400">
-                {customerData.active_customer ? "Yes" : "No"}
-              </span>
-            </p>
-            <p className="flex items-center gap-6">
-              <strong>Edit Customer info:</strong>{" "}
-              <FaEdit
-                className="me-3 text-green-600"
-                style={{ cursor: "pointer" }}
-                onClick={() => handleEdit(customerData)}
-              />
-            </p>
-            {/* <Button
-                variant="link"
-                href={/admin/edit-customer/${customer_id}}
-              >
-                <i className="fa fa-edit"></i> Edit customer info
-              </Button> */}
-          </div>
-
-          <div>
-            <h3 className="text-2xl font-bold text-blue-800">
-              Vehicles of {customerData.customer_first_name}
-            </h3>
-
-            {vehicles.length > 0 ? (
-              <div className="d-flex flex-wrap gap-3">
-                {vehicles.map((vehicle) => (
-                  <div
-                    key={vehicle.vehicle_id}
-                    className="card shadow p-3 my-2 bg-white rounded"
-                    style={{ width: "18rem" }}
-                  >
-                    <div className="card-body">
-                      <h5 className="card-title">
-                        {vehicle.vehicle_make} {vehicle.vehicle_model}
-                      </h5>
-                      <p className="card-text">
-                        <strong>Vehicle color:</strong>{" "}
-                        <span className="text-gray-400">
-                          {vehicle.vehicle_color}
-                        </span>
-                      </p>
-                      <p className="card-text">
-                        <strong>Vehicle tag:</strong>{" "}
-                        <span className="text-gray-400">
-                          {vehicle.vehicle_tag}
-                        </span>
-                      </p>
-                      <p className="card-text">
-                        <strong>Vehicle year:</strong>{" "}
-                        <span className="text-gray-400">
-                          {vehicle.vehicle_year}
-                        </span>
-                      </p>
-                      <p className="card-text">
-                        <strong>Vehicle mileage:</strong>{" "}
-                        <span className="text-gray-400">
-                          {vehicle.vehicle_mileage}
-                        </span>
-                      </p>
-                      <p className="card-text">
-                        <strong>Vehicle serial:</strong>{" "}
-                        <span className="text-gray-400">
-                          {vehicle.vehicle_serial}
-                        </span>
-                      </p>
-                      <div className="d-flex justify-content-between">
-                        <Button
-                          variant="link"
-                          onClick={() => handleEditVehicleClick(vehicle)}
-                        >
-                          <i className="fa fa-edit"></i> Edit
-                        </Button>
-                        <Button
-                          className="bg-inherit border-0"
-                          onClick={() =>
-                            handleDeleteVehicle(vehicle.vehicle_id)
-                          }
-                        >
-                          <FcFullTrash />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p>No vehicles found</p>
-            )}
-
-            {!showAddVehicleForm && (
-              <Button variant="danger" onClick={handleAddVehicleClick}>
-                Add New Vehicle
-              </Button>
-            )}
-          </div>
-
-          {showAddVehicleForm && (
-            <Card className="mb-4">
-              <Card.Body>
-                <AddVehicleForm
-                  customer_id={customer_id}
-                  onVehicleAdded={handleVehicleAdded}
-                />
-              </Card.Body>
-            </Card>
-          )}
-          {/* orders */}
-          <div className="my-6">
-            <h3 className="text-2xl font-bold text-blue-800">
-              Orders of {customerData.customer_first_name}
-            </h3>
-            {orders.length > 0 ? (
-              <ul>
-                {orders.map((order) => (
-                  <li key={order.order_id} className="mb-2">
-                    <div className="flex flex-row gap-4 ">
-                      <p className="text-lg font-bold mt-1">
-                        Order #{order.order_id}{" "}
-                      </p>
-                      <Link to={`/admin/order/${order.order_id}`}>
-                        <button
-                          // variant="danger"
-                          className="bg-gray-700 text-white px-2  py-1 hover:bg-gray-500 hover:translate-x-2  "
-                        >
-                          View Order Details
-                        </button>
-                      </Link>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p>Orders will be displayed here</p>
-            )}
-          </div>
+        <Col md={6}>
+          <Form.Group className="mb-3">
+            <Form.Label>Model <span className="text-danger">*</span></Form.Label>
+            <Form.Control
+              type="text"
+              name="vehicle_model"
+              value={formData.vehicle_model}
+              onChange={(e) => setFormData({...formData, vehicle_model: e.target.value})}
+              required
+            />
+          </Form.Group>
         </Col>
       </Row>
+      <Row>
+        <Col md={4}>
+          <Form.Group className="mb-3">
+            <Form.Label>Year <span className="text-danger">*</span></Form.Label>
+            <Form.Control
+              type="number"
+              name="vehicle_year"
+              value={formData.vehicle_year}
+              onChange={(e) => setFormData({...formData, vehicle_year: e.target.value})}
+              min="1900"
+              max={new Date().getFullYear() + 1}
+              required
+            />
+          </Form.Group>
+        </Col>
+        <Col md={4}>
+          <Form.Group className="mb-3">
+            <Form.Label>License Plate <span className="text-danger">*</span></Form.Label>
+            <Form.Control
+              type="text"
+              name="vehicle_license_plate"
+              value={formData.vehicle_license_plate}
+              onChange={(e) => setFormData({...formData, vehicle_license_plate: e.target.value})}
+              required
+            />
+          </Form.Group>
+        </Col>
+        <Col md={4}>
+          <Form.Group className="mb-3">
+            <Form.Label>VIN</Form.Label>
+            <Form.Control
+              type="text"
+              name="vehicle_vin"
+              value={formData.vehicle_vin}
+              onChange={(e) => setFormData({...formData, vehicle_vin: e.target.value})}
+            />
+          </Form.Group>
+        </Col>
+      </Row>
+      <Row>
+        <Col md={6}>
+          <Form.Group className="mb-3">
+            <Form.Label>Color</Form.Label>
+            <Form.Control
+              type="text"
+              name="vehicle_color"
+              value={formData.vehicle_color}
+              onChange={(e) => setFormData({...formData, vehicle_color: e.target.value})}
+            />
+          </Form.Group>
+        </Col>
+        <Col md={6}>
+          <Form.Group className="mb-3">
+            <Form.Label>Mileage</Form.Label>
+            <Form.Control
+              type="number"
+              name="vehicle_mileage"
+              value={formData.vehicle_mileage}
+              onChange={(e) => setFormData({...formData, vehicle_mileage: e.target.value})}
+            />
+          </Form.Group>
+        </Col>
+      </Row>
+      <Row>
+        <Col md={6}>
+          <Form.Group className="mb-3">
+            <Form.Label>Engine Number</Form.Label>
+            <Form.Control
+              type="text"
+              name="vehicle_engine_number"
+              value={formData.vehicle_engine_number}
+              onChange={(e) => setFormData({...formData, vehicle_engine_number: e.target.value})}
+            />
+          </Form.Group>
+        </Col>
+        <Col md={6}>
+          <Form.Group className="mb-3">
+            <Form.Label>Chassis Number</Form.Label>
+            <Form.Control
+              type="text"
+              name="vehicle_chassis_number"
+              value={formData.vehicle_chassis_number}
+              onChange={(e) => setFormData({...formData, vehicle_chassis_number: e.target.value})}
+            />
+          </Form.Group>
+        </Col>
+      </Row>
+      <Row>
+        <Col md={6}>
+          <Form.Group className="mb-3">
+            <Form.Label>Transmission Type</Form.Label>
+            <Form.Select
+              name="vehicle_transmission_type"
+              value={formData.vehicle_transmission_type}
+              onChange={(e) => setFormData({...formData, vehicle_transmission_type: e.target.value})}
+            >
+              <option value="Automatic">Automatic</option>
+              <option value="Manual">Manual</option>
+            </Form.Select>
+          </Form.Group>
+        </Col>
+        <Col md={6}>
+          <Form.Group className="mb-3">
+            <Form.Label>Fuel Type</Form.Label>
+            <Form.Select
+              name="vehicle_fuel_type"
+              value={formData.vehicle_fuel_type}
+              onChange={(e) => setFormData({...formData, vehicle_fuel_type: e.target.value})}
+            >
+              <option value="Gasoline">Gasoline</option>
+              <option value="Diesel">Diesel</option>
+            </Form.Select>
+          </Form.Group>
+        </Col>
+      </Row>
+      <Row>
+        <Col md={6}>
+          <Form.Group className="mb-3">
+            <Form.Label>Last Service Date</Form.Label>
+            <Form.Control
+              type="date"
+              name="last_service_date"
+              value={formData.last_service_date}
+              onChange={(e) => setFormData({...formData, last_service_date: e.target.value})}
+            />
+          </Form.Group>
+        </Col>
+        <Col md={6}>
+          <Form.Group className="mb-3">
+            <Form.Label>Next Service Date</Form.Label>
+            <Form.Control
+              type="date"
+              name="next_service_date"
+              value={formData.next_service_date}
+              onChange={(e) => setFormData({...formData, next_service_date: e.target.value})}
+            />
+          </Form.Group>
+        </Col>
+      </Row>
+      <Row>
+        <Col md={6}>
+          <Form.Group className="mb-3">
+            <Form.Label>Insurance Provider</Form.Label>
+            <Form.Control
+              type="text"
+              name="insurance_provider"
+              value={formData.insurance_provider}
+              onChange={(e) => setFormData({...formData, insurance_provider: e.target.value})}
+            />
+          </Form.Group>
+        </Col>
+        <Col md={6}>
+          <Form.Group className="mb-3">
+            <Form.Label>Insurance Expiry</Form.Label>
+            <Form.Control
+              type="date"
+              name="insurance_expiry"
+              value={formData.insurance_expiry}
+              onChange={(e) => setFormData({...formData, insurance_expiry: e.target.value})}
+            />
+          </Form.Group>
+        </Col>
+      </Row>
+      <div className="d-flex justify-content-end mt-3">
+        <Button variant="secondary" onClick={onCancel} className="me-2">
+          Cancel
+        </Button>
+        <Button variant="primary" type="submit">
+          {editingVehicle ? 'Update Vehicle' : 'Add Vehicle'}
+        </Button>
+      </div>
+    </Form>
+  );
 
-      {/* Bootstrap Modal for editing vehicle */}
+  if (loading) {
+    return (
+      <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '60vh' }}>
+        <div className="spinner-border text-primary" role="status">
+          <span className="visually-hidden">Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!customerData) {
+    return <div className="alert alert-danger">Customer not found</div>;
+  }
+
+  return (
+    <div className="customer-profile-container">
+      <div className="d-flex justify-content-between align-items-center mb-4">
+        <h2 className="mb-0">
+          <Button 
+            variant="link" 
+            onClick={() => navigate(-1)} 
+            className="p-0 me-3"
+          >
+            <FaArrowLeft size={24} />
+          </Button>
+          Customer Profile
+        </h2>
+      </div>
+
+      <Card className="mb-4">
+        <Card.Body>
+          <div className="d-flex align-items-center mb-4">
+            <div className="customer-avatar me-4">
+              <FaUser size={80} className="text-primary" />
+            </div>
+            <div>
+              <h3 className="mb-1">
+                {customerData.customer_first_name} {customerData.customer_last_name}
+              </h3>
+              <p className="text-muted mb-2">{customerData.customer_email}</p>
+              <Badge bg={customerData.active_customer ? 'success' : 'secondary'}>
+                {customerData.active_customer ? 'Active' : 'Inactive'} Customer
+              </Badge>
+            </div>
+            {/* Hide admin edit for customer view; only show if employee token exists */}
+            {localStorage.getItem('employee_token') && (
+              <div className="ms-auto">
+                <Link
+                  to={`/admin/customer/${customer_id}`}
+                  className="btn btn-outline-primary"
+                >
+                  <FaEdit className="me-2" /> Edit Profile
+                </Link>
+              </div>
+            )}
+          </div>
+
+          <Tabs
+            defaultActiveKey="info"
+            id="customer-tabs"
+            className="mb-3"
+            onSelect={(k) => setActiveTab(k || 'info')}
+          >
+            <Tab eventKey="info" title={
+              <span><FaUser className="me-1" /> Information</span>
+            }>
+              <div className="mt-4">
+                <h5>Contact Information</h5>
+                <Row className="mb-3">
+                  <Col md={6}>
+                    <p><strong>Email:</strong> {customerData.customer_email}</p>
+                    <p><strong>Phone:</strong> {customerData.customer_phone || 'N/A'}</p>
+                  </Col>
+                  <Col md={6}>
+                    <p><strong>Address:</strong> {customerData.customer_address || 'N/A'}</p>
+                    <p><strong>City:</strong> {customerData.customer_city || 'N/A'}</p>
+                  </Col>
+                </Row>
+              </div>
+            </Tab>
+
+            <Tab eventKey="vehicles" title={
+              <span><FaCar className="me-1" /> Vehicles</span>
+            }>
+              <div className="mt-4">
+                <div className="d-flex justify-content-between align-items-center mb-4">
+                  <h5>Vehicles</h5>
+                  {localStorage.getItem('employee_token') && !showAddVehicleForm && (
+                    <Button 
+                      variant="primary" 
+                      onClick={() => setShowAddVehicleForm(true)}
+                    >
+                      <FaCar className="me-2" /> Add Vehicle
+                    </Button>
+                  )}
+                </div>
+
+                {localStorage.getItem('employee_token') && showAddVehicleForm && (
+                  <Card className="mb-4">
+                    <Card.Body>
+                      <div className="d-flex justify-content-between align-items-center mb-3">
+                        <h6>Add New Vehicle</h6>
+                        <Button 
+                          variant="link" 
+                          className="text-danger p-0"
+                          onClick={() => setShowAddVehicleForm(false)}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                      {renderVehicleForm({ onCancel: () => setShowAddVehicleForm(false) })}
+                    </Card.Body>
+                  </Card>
+                )}
+
+                {vehicles.length > 0 ? (
+                  <Row>
+                    {vehicles.map((vehicle) => (
+                      <Col md={6} key={vehicle.vehicle_id} className="mb-3">
+                        <Card>
+                          <Card.Body>
+                            <div className="d-flex justify-content-between align-items-start">
+                              <div>
+                                <h5>{vehicle.vehicle_make} {vehicle.vehicle_model}</h5>
+                                <p className="text-muted mb-1">{vehicle.vehicle_year} • {vehicle.vehicle_color}</p>
+                                <p className="mb-1"><small>VIN: {vehicle.vehicle_vin || 'N/A'}</small></p>
+                                <p className="mb-0"><small>License: {vehicle.vehicle_license_plate || 'N/A'}</small></p>
+                              </div>
+                              <div>
+                                {localStorage.getItem('employee_token') && (
+                                <Button
+                                  variant="outline-secondary"
+                                  size="sm"
+                                  className="me-2"
+                                  onClick={() => handleEditVehicleClick(vehicle)}
+                                >
+                                  <FaEdit />
+                                </Button>
+                                )}
+                                {localStorage.getItem('employee_token') && (
+                                <Button
+                                  variant="outline-danger"
+                                  size="sm"
+                                  onClick={() => handleDeleteVehicle(vehicle.vehicle_id)}
+                                >
+                                  <FcFullTrash />
+                                </Button>
+                                )}
+                              </div>
+                            </div>
+                          </Card.Body>
+                        </Card>
+                      </Col>
+                    ))}
+                  </Row>
+                ) : (
+                  <Card>
+                    <Card.Body className="text-center py-5">
+                      <FaCar size={48} className="text-muted mb-3" />
+                      <h5>No Vehicles Found</h5>
+                      <p className="text-muted">This customer doesn't have any vehicles added yet.</p>
+                      <Button 
+                        variant="primary" 
+                        onClick={() => setShowAddVehicleForm(true)}
+                      >
+                        Add First Vehicle
+                      </Button>
+                    </Card.Body>
+                  </Card>
+                )}
+              </div>
+            </Tab>
+
+            <Tab eventKey="orders" title={
+              <span><FaClipboardList className="me-1" /> Orders</span>
+            }>
+              <div className="mt-4">
+                 <h5>Order History</h5>
+                {orders.length > 0 ? (
+                  <div className="table-responsive">
+                    <Table hover>
+                      <thead>
+                        <tr>
+                          <th>Order #</th>
+                          <th>Date</th>
+                          <th>Vehicle</th>
+                          <th>Status</th>
+                          <th>Total</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {orders.map((order) => (
+                          <tr key={order.order_id}>
+                            <td>#{order.order_id}</td>
+                            <td>{new Date(order.order_date).toLocaleDateString()}</td>
+                            <td>
+                              {order.vehicle_make} {order.vehicle_model}
+                            </td>
+                            <td>
+                              {(() => {
+                                const { style, text } = getBootstrapBadgeProps(order.order_status);
+                                return <Badge style={style}>{text}</Badge>;
+                              })()}
+                            </td>
+                            <td>${order.total_amount?.toFixed(2) || '0.00'}</td>
+                            <td>
+                              <Button variant="link" size="sm" className="p-0">
+                                View Details
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </Table>
+                  </div>
+                ) : (
+                  <Card>
+                    <Card.Body className="text-center py-5">
+                      <FaClipboardList size={48} className="text-muted mb-3" />
+                      <h5>No Orders Found</h5>
+                      <p className="text-muted">This customer doesn't have any orders yet.</p>
+                    </Card.Body>
+                  </Card>
+                )}
+              </div>
+            </Tab>
+          </Tabs>
+        </Card.Body>
+      </Card>
+
+      {/* Edit Vehicle Modal */}
       <Modal show={showEditModal} onHide={() => setShowEditModal(false)}>
         <Modal.Header closeButton>
-          <Modal.Title>Edit Vehicle Info</Modal.Title>
+          <Modal.Title>Edit Vehicle</Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          <Form>
-            <Form.Group className="mb-3">
-              <Form.Label>Vehicle Make</Form.Label>
-              <Form.Control
-                type="text"
-                value={formData.vehicle_make}
-                onChange={(e) =>
-                  setFormData({ ...formData, vehicle_make: e.target.value })
-                }
-              />
-            </Form.Group>
-            <Form.Group className="mb-3">
-              <Form.Label>Vehicle Model</Form.Label>
-              <Form.Control
-                type="text"
-                value={formData.vehicle_model}
-                onChange={(e) =>
-                  setFormData({ ...formData, vehicle_model: e.target.value })
-                }
-              />
-            </Form.Group>
-            <Form.Group className="mb-3">
-              <Form.Label>Vehicle Year</Form.Label>
-              <Form.Control
-                type="number"
-                value={formData.vehicle_year}
-                onChange={(e) =>
-                  setFormData({ ...formData, vehicle_year: e.target.value })
-                }
-              />
-            </Form.Group>
-            <Form.Group className="mb-3">
-              <Form.Label>Vehicle Color</Form.Label>
-              <Form.Control
-                type="text"
-                value={formData.vehicle_color}
-                onChange={(e) =>
-                  setFormData({ ...formData, vehicle_color: e.target.value })
-                }
-              />
-            </Form.Group>
-            <Form.Group className="mb-3">
-              <Form.Label>Vehicle Mileage</Form.Label>
-              <Form.Control
-                type="number"
-                value={formData.vehicle_mileage}
-                onChange={(e) =>
-                  setFormData({ ...formData, vehicle_mileage: e.target.value })
-                }
-              />
-            </Form.Group>
-            <Form.Group className="mb-3">
-              <Form.Label>Vehicle Serial</Form.Label>
-              <Form.Control
-                type="text"
-                value={formData.vehicle_serial}
-                onChange={(e) =>
-                  setFormData({ ...formData, vehicle_serial: e.target.value })
-                }
-              />
-            </Form.Group>
-          </Form>
+          {renderVehicleForm({ onCancel: () => setShowEditModal(false) })}
         </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={() => setShowEditModal(false)}>
-            Close
-          </Button>
-          <Button variant="primary" onClick={handleUpdateVehicle}>
-            Save Changes
-          </Button>
-        </Modal.Footer>
       </Modal>
     </div>
   );

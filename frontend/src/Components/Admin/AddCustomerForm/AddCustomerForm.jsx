@@ -3,29 +3,25 @@ import { useState } from "react";
 import customerService from "../../services/customer.service";
 // Import the useAuth hook
 import { useAuth } from "../../../Contexts/AuthContext";
-import { FaEye, FaEyeSlash } from "react-icons/fa";
 
 function AddCustomerForm(props) {
   const [customer_email, setEmail] = useState("");
   const [customer_first_name, setFirstName] = useState("");
   const [customer_last_name, setLastName] = useState("");
   const [customer_phone, setPhoneNumber] = useState("");
-  const [customer_password, setPassword] = useState("");
   const [active_customer, setActive_customer] = useState(1);
 
   // Errors
   const [emailError, setEmailError] = useState("");
   const [firstNameRequired, setFirstNameRequired] = useState("");
-  const [passwordError, setPasswordError] = useState("");
   const [success, setSuccess] = useState(false);
   const [serverError, setServerError] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   // Create a variable to hold the user's token
-  let loggedInCustomerToken = "";
+  let loggedInEmployeeToken = "";
   // Destructure the auth hook and get the token
-  const { customer } = useAuth();
-  if (customer && customer.customer_token) {
-    loggedInCustomerToken = customer.customer_token;
+  const { employee } = useAuth();
+  if (employee && employee.employee_token) {
+    loggedInEmployeeToken = employee.employee_token;
   }
 
   const handleSubmit = (e) => {
@@ -51,13 +47,6 @@ function AddCustomerForm(props) {
         setEmailError("");
       }
     }
-    // Password has to be at least 6 characters long
-    if (!customer_password || customer_password.length < 6) {
-      setPasswordError("Password must be at least 8 characters long");
-      valid = false;
-    } else {
-      setPasswordError("");
-    }
     // If the form is not valid, do not submit
     if (!valid) {
       return;
@@ -67,13 +56,12 @@ function AddCustomerForm(props) {
       customer_first_name,
       customer_last_name,
       customer_phone,
-      customer_password,
       active_customer,
     };
     // Pass the form data to the service
     const newCustomer = customerService.createCustomer(
       formData,
-      loggedInCustomerToken
+      loggedInEmployeeToken
     );
     newCustomer
       .then((response) => response.json())
@@ -175,29 +163,6 @@ function AddCustomerForm(props) {
                         required
                         style={{ height: "40px", fontSize: "14px" }}
                       />
-                    </div>
-
-                    <div className="form-group col-md-12 relative">
-                      <input
-                        type={showPassword ? "text" : "password"}
-                        name="customer_password"
-                        value={customer_password}
-                        onChange={(event) => setPassword(event.target.value)}
-                        placeholder="Customer password"
-                        style={{ height: "40px", fontSize: "14px" }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)} 
-                        className="absolute right-6 top-1/2 transform -translate-y-1/2"
-                      >
-                        {showPassword ? <FaEyeSlash /> : <FaEye />}{" "}
-                      </button>
-                      {passwordError && (
-                        <div className="validation-error" role="alert">
-                          {passwordError}
-                        </div>
-                      )}
                     </div>
 
                     <div className="form-group col-md-12">

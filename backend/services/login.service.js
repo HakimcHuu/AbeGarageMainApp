@@ -55,9 +55,17 @@ async function logInEmployee(employeeData) {
 async function logInCustomer(customerData) {
   try {
     let returnData = {};
-    const customer = await customerService.getCustomerByEmail(
-      customerData.email
-    );
+    let customer = null;
+    if (customerData.email) {
+      customer = await customerService.getCustomerByEmail(
+        String(customerData.email || '').trim()
+      );
+    }
+    if ((!customer || customer.length === 0) && customerData.phone) {
+      customer = await customerService.getCustomerByPhone(
+        String(customerData.phone || '').trim()
+      );
+    }
     if (!customer || customer.length === 0) {
       returnData = { status: "fail", message: "Customer does not exist" };
       return returnData;
@@ -76,7 +84,13 @@ async function logInCustomer(customerData) {
 
     // Otherwise fall back to password-based login for compatibility
     if (!customerData.password) {
-      return { status: "fail", message: "Password or phone is required" };
+      // If no password is provided, check if the customer has a phone number
+      if (!customer[0].customer_phone) {
+        return { status: "fail", message: "Password or phone is required" };
+      }
+      // If customer has a phone number, they can log in without password
+      returnData = { status: "success", data: customer[0] };
+      return returnData;
     }
     const incomingCustomerPassword = customerData.password.trim();
     const storedCustomerHash = String(customer[0].customer_password_hashed || "").trim();

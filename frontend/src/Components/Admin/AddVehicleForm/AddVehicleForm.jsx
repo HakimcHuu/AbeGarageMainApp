@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Form, Button, Row, Col } from "react-bootstrap";
 import vehicleService from "../../services/vehicle.service"; // Adjust the path accordingly
 import { useAuth } from "../../../Contexts/AuthContext";
 
@@ -21,8 +22,11 @@ function AddVehicleForm({ customer_id, onVehicleAdded }) {
 
   // Create a variable to hold the user's token
   let loggedInCustomerToken = "";
-  const { customer } = useAuth();
-  if (customer && customer.customer_token) {
+  const { customer, employee } = useAuth();
+  // Use employee token if available (admin context), otherwise use customer token
+  if (employee && employee.employee_token) {
+    loggedInCustomerToken = employee.employee_token;
+  } else if (customer && customer.customer_token) {
     loggedInCustomerToken = customer.customer_token;
   }
 
@@ -59,6 +63,8 @@ function AddVehicleForm({ customer_id, onVehicleAdded }) {
       vehicle_color,
       active_vehicle,
       customer_id, // Ensure the customer_id is included in the form data
+      vehicle_license_plate: vehicle_tag,
+      vehicle_vin: vehicle_serial,
     };
 
     // Pass the form data to the service
@@ -85,136 +91,115 @@ function AddVehicleForm({ customer_id, onVehicleAdded }) {
   };
 
   return (
-    <section className="contact-section">
-      <div className="auto-container">
-        <div className="contact-title">
-          <h2>Add Customer's vehicle</h2>
-        </div>
-        <div className="row clearfix">
-          <div className="form-column col-lg-7">
-            <div className="inner-column">
-              <div className="contact-form">
-                <form onSubmit={handleSubmit}>
-                  <div className="row clearfix">
-                    <div className="form-group col-md-12">
-                      {serverError && (
-                        <div className="validation-error" role="alert">
-                          {serverError}
-                        </div>
-                      )}
-                      <input
-                        type="text"
-                        name="vehicle_year"
-                        value={vehicle_year}
-                        onChange={(e) => setVehicleYear(e.target.value)}
-                        placeholder="Vehicle year"
-                        style={{ height: "40px", fontSize: "14px" }}
-                      />
-                      {yearError && (
-                        <div className="validation-error" role="alert">
-                          {yearError}
-                        </div>
-                      )}
-                    </div>
-                    <div className="form-group col-md-12">
-                      <input
-                        type="text"
-                        name="vehicle_make"
-                        value={vehicle_make}
-                        onChange={(e) => setVehicleMake(e.target.value)}
-                        placeholder="Vehicle make"
-                        style={{ height: "40px", fontSize: "14px" }}
-                      />
-                      {makeError && (
-                        <div className="validation-error" role="alert">
-                          {makeError}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="form-group col-md-12">
-                      <input
-                        type="text"
-                        name="vehicle_model"
-                        value={vehicle_model}
-                        onChange={(e) => setVehicleModel(e.target.value)}
-                        placeholder="Vehicle model"
-                        style={{ height: "40px", fontSize: "14px" }}
-                      />
-                    </div>
-
-                    <div className="form-group col-md-12">
-                      <input
-                        type="text"
-                        name="vehicle_type"
-                        value={vehicle_type}
-                        onChange={(e) => setVehicleType(e.target.value)}
-                        placeholder="Vehicle type"
-                        style={{ height: "40px", fontSize: "14px" }}
-                      />
-                    </div>
-
-                    <div className="form-group col-md-12">
-                      <input
-                        type="text"
-                        name="vehicle_mileage"
-                        value={vehicle_mileage}
-                        onChange={(e) => setVehicleMileage(e.target.value)}
-                        placeholder="Vehicle mileage"
-                        style={{ height: "40px", fontSize: "14px" }}
-                      />
-                    </div>
-
-                    <div className="form-group col-md-12">
-                      <input
-                        type="text"
-                        name="vehicle_tag"
-                        value={vehicle_tag}
-                        onChange={(e) => setVehicleTag(e.target.value)}
-                        placeholder="Vehicle tag"
-                        style={{ height: "40px", fontSize: "14px" }}
-                      />
-                    </div>
-
-                    <div className="form-group col-md-12">
-                      <input
-                        type="text"
-                        name="vehicle_serial"
-                        value={vehicle_serial}
-                        onChange={(e) => setVehicleSerial(e.target.value)}
-                        placeholder="Vehicle serial"
-                        style={{ height: "40px", fontSize: "14px" }}
-                      />
-                    </div>
-
-                    <div className="form-group col-md-12">
-                      <input
-                        type="text"
-                        name="vehicle_color"
-                        value={vehicle_color}
-                        onChange={(e) => setVehicleColor(e.target.value)}
-                        placeholder="Vehicle color"
-                        style={{ height: "40px", fontSize: "14px" }}
-                      />
-                    </div>
-
-                    <div className="form-group col-md-12">
-                      <button
-                        className="theme-btn btn-style-one"
-                        type="submit"
-                        data-loading-text="Please wait..."
-                      >
-                        <span>Add Vehicle</span>
-                      </button>
-                    </div>
-                  </div>
-                </form>
-              </div>
-            </div>
+    <div>
+      <h4 className="mb-4">Add a New Vehicle</h4>
+      <Form onSubmit={handleSubmit}>
+        {serverError && (
+          <div className="alert alert-danger" role="alert">
+            {serverError}
           </div>
-        </div>
-      </div>
-    </section>
+        )}
+        <Row>
+          <Col md={6}>
+            <Form.Group className="mb-3">
+              <Form.Label>Year</Form.Label>
+              <Form.Control
+                type="number"
+                value={vehicle_year}
+                onChange={(e) => setVehicleYear(e.target.value)}
+                isInvalid={!!yearError}
+              />
+              <Form.Control.Feedback type="invalid">
+                {yearError}
+              </Form.Control.Feedback>
+            </Form.Group>
+          </Col>
+          <Col md={6}>
+            <Form.Group className="mb-3">
+              <Form.Label>Make</Form.Label>
+              <Form.Control
+                type="text"
+                value={vehicle_make}
+                onChange={(e) => setVehicleMake(e.target.value)}
+                isInvalid={!!makeError}
+              />
+              <Form.Control.Feedback type="invalid">
+                {makeError}
+              </Form.Control.Feedback>
+            </Form.Group>
+          </Col>
+        </Row>
+        <Row>
+          <Col md={6}>
+            <Form.Group className="mb-3">
+              <Form.Label>Model</Form.Label>
+              <Form.Control
+                type="text"
+                value={vehicle_model}
+                onChange={(e) => setVehicleModel(e.target.value)}
+              />
+            </Form.Group>
+          </Col>
+          <Col md={6}>
+            <Form.Group className="mb-3">
+              <Form.Label>Type</Form.Label>
+              <Form.Control
+                type="text"
+                value={vehicle_type}
+                onChange={(e) => setVehicleType(e.target.value)}
+              />
+            </Form.Group>
+          </Col>
+        </Row>
+        <Row>
+          <Col md={6}>
+            <Form.Group className="mb-3">
+              <Form.Label>Mileage</Form.Label>
+              <Form.Control
+                type="number"
+                value={vehicle_mileage}
+                onChange={(e) => setVehicleMileage(e.target.value)}
+              />
+            </Form.Group>
+          </Col>
+          <Col md={6}>
+            <Form.Group className="mb-3">
+              <Form.Label>Tag</Form.Label>
+              <Form.Control
+                type="text"
+                value={vehicle_tag}
+                onChange={(e) => setVehicleTag(e.target.value)}
+              />
+            </Form.Group>
+          </Col>
+        </Row>
+        <Row>
+          <Col md={6}>
+            <Form.Group className="mb-3">
+              <Form.Label>Serial</Form.Label>
+              <Form.Control
+                type="text"
+                value={vehicle_serial}
+                onChange={(e) => setVehicleSerial(e.target.value)}
+              />
+            </Form.Group>
+          </Col>
+          <Col md={6}>
+            <Form.Group className="mb-3">
+              <Form.Label>Color</Form.Label>
+              <Form.Control
+                type="text"
+                value={vehicle_color}
+                onChange={(e) => setVehicleColor(e.target.value)}
+              />
+            </Form.Group>
+          </Col>
+        </Row>
+        <Button variant="primary" type="submit" className="add-vehicle-btn">
+          Add Vehicle
+        </Button>
+      </Form>
+    </div>
   );
 }
 

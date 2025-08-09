@@ -5,7 +5,17 @@ const customerService = require("../services/customer.service");
 
 // A function to verify the token received from the frontend 
 const verifyToken = async (req, res, next) => {
-  const token = req.cookies.token || req.headers.authorization?.split(" ")[1]; 
+  // Accept token from multiple places: Cookie, Authorization header (Bearer or raw), and x-access-token
+  const authHeader = req.headers.authorization || "";
+  const bearerToken = authHeader.startsWith("Bearer ")
+    ? authHeader.split(" ")[1]
+    : (authHeader ? authHeader : null);
+  const headerToken =
+    req.headers["x-access-token"] ||
+    req.headers["x-accesstoken"] ||
+    req.headers["x-access_token"];
+
+  const token = req.cookies.token || headerToken || bearerToken;
   if (!token) {
     return res.status(403).json({
       status: "fail",

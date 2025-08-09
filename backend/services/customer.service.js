@@ -16,10 +16,6 @@ async function checkIfCustomerExists(email) {
 async function createCustomer(customer) {
     let createdCustomer = {};
     try {
-    // Generate a salt and hash the password
-    const salt = await bcrypt.genSalt(10);
-    // Hash the password
-    const hashedPassword = await bcrypt.hash(customer.customer_password, salt);
     const query =
         "INSERT INTO customer (customer_email, active_customer) VALUES (?, ?)";
     const rows = await conn.query(query, [
@@ -32,7 +28,7 @@ async function createCustomer(customer) {
     }
     // Get the customer id from the insert
     const customer_id = rows.insertId;
-    // Insert the remaining data into the customer_info & customer_pass
+    // Insert the remaining data into the customer_info
     const query2 =
         "INSERT INTO customer_info (customer_id, customer_first_name, customer_last_name, customer_phone) VALUES (?, ?, ?, ?)";
     const rows2 = await conn.query(query2, [
@@ -41,9 +37,17 @@ async function createCustomer(customer) {
         customer.customer_last_name,
         customer.customer_phone,
     ]);
-    const query3 =
-        "INSERT INTO customer_pass (customer_id, customer_password_hashed) VALUES (?, ?)";
-    const rows3 = await conn.query(query3, [customer_id, hashedPassword]);
+
+    // Only insert password if provided
+    if (customer.customer_password) {
+        // Generate a salt and hash the password
+        const salt = await bcrypt.genSalt(10);
+        // Hash the password
+        const hashedPassword = await bcrypt.hash(customer.customer_password, salt);
+        const query3 =
+            "INSERT INTO customer_pass (customer_id, customer_password_hashed) VALUES (?, ?)";
+        const rows3 = await conn.query(query3, [customer_id, hashedPassword]);
+    }
 
     // Construct the customer object to return
     createdCustomer = {
@@ -65,11 +69,15 @@ async function getCustomerByEmail(customer_email) {
     }
 
     const query = `
-    SELECT * 
-    FROM customer 
-    INNER JOIN customer_info ON customer.customer_id = customer_info.customer_id
-    INNER JOIN customer_pass ON customer.customer_id = customer_pass.customer_id
-    WHERE customer.customer_email = ?`;
+    SELECT 
+      c.customer_id AS customer_id,
+      c.customer_email,
+      ci.customer_first_name,
+      ci.customer_last_name,
+      ci.customer_phone
+    FROM customer c
+    INNER JOIN customer_info ci ON c.customer_id = ci.customer_id
+    WHERE c.customer_email = ?`;
 
     try {
     const rows = await conn.query(query, [customer_email]);
@@ -82,6 +90,40 @@ async function getCustomerByEmail(customer_email) {
     return rows;
     } catch (error) {
         console.error("Error fetching customer by email:", error);
+        throw error;
+    }
+}
+
+// A function to get the customer by phone (from customer_info)
+async function getCustomerByPhone(customer_phone) {
+    console.log("Customer phone being used for login:", customer_phone);
+
+    if (!customer_phone) {
+        throw new Error("Customer phone is undefined or invalid");
+    }
+
+    const query = `
+    SELECT 
+      c.customer_id AS customer_id,
+      c.customer_email,
+      ci.customer_first_name,
+      ci.customer_last_name,
+      ci.customer_phone
+    FROM customer c
+    INNER JOIN customer_info ci ON c.customer_id = ci.customer_id
+    WHERE ci.customer_phone = ?`;
+
+    try {
+        const rows = await conn.query(query, [customer_phone]);
+
+        if (rows.length === 0) {
+            console.log("No customer found with this phone:", customer_phone);
+            return null;
+        }
+
+        return rows;
+    } catch (error) {
+        console.error("Error fetching customer by phone:", error);
         throw error;
     }
 }
@@ -168,9 +210,23 @@ async function getVehiclesByCustomerId(customerId) {
 // A function to get all orders of a specific customer
 async function getOrdersByCustomerId(customerId) {
   const query = `
-    SELECT * 
-    FROM orders 
-    WHERE customer_id = ?`;
+    SELECT 
+        o.order_id,
+        o.order_date,
+        o.order_status,
+        o.customer_id,
+        o.vehicle_id,
+        oi.order_total_price,
+        cvi.vehicle_make,
+        cvi.vehicle_model,
+        cvi.vehicle_year,
+        cvi.vehicle_license_plate
+    FROM orders o
+    LEFT JOIN order_info oi ON o.order_id = oi.order_id
+    LEFT JOIN customer_vehicle_info cvi ON o.vehicle_id = cvi.vehicle_id
+    WHERE o.customer_id = ?
+    ORDER BY o.order_date DESC;
+  `;
 
     try {
         const rows = await conn.query(query, [customerId]);
@@ -180,7 +236,13 @@ async function getOrdersByCustomerId(customerId) {
             return [];
         }
 
-        return rows; 
+        // Ensure total_amount is a number (float)
+        const formattedOrders = rows.map(order => ({
+            ...order,
+            total_amount: parseFloat(order.order_total_price)
+        }));
+
+        return formattedOrders; 
     } catch (error) {
         console.error("Error fetching orders by customer ID:", error);
         throw error;

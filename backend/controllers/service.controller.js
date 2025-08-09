@@ -3,6 +3,14 @@ const Service = require('../services/service.service');
 // Controller to get all services
 const getAllServices = async (req, res) => {
     try {
+        // Ensure defaults exist (idempotent)
+        try {
+            await Service.seedDefaultServices();
+        } catch (e) {
+            // Don't block fetch if seed fails (e.g., columns mismatch), just log
+            console.warn('[services] Seed default services warning:', e?.message || e);
+        }
+
         const services = await Service.getAllServices();
         res.status(200).json({
             status: 'success',
@@ -99,9 +107,21 @@ const deleteService = async (req, res) => {
     }
 };
 
+// Explicit seed endpoint (optional, admin-only via routes)
+const seedDefaults = async (req, res) => {
+    try {
+        const result = await Service.seedDefaultServices();
+        res.status(200).json({ status: 'success', ...result });
+    } catch (error) {
+        console.error('Error seeding default services:', error);
+        res.status(500).json({ status: 'error', message: 'Failed to seed default services' });
+    }
+};
+
 module.exports = {
     getAllServices,
     createService,
     updateService,
     deleteService,
+    seedDefaults,
 };

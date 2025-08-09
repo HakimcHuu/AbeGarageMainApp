@@ -3,6 +3,13 @@ const customerService = require("../services/customer.service");
 
 // Create the add customer controller
 async function createCustomer(req, res, next) {
+    // Check if the user is an employee
+    if (!req.employee_id) {
+        return res.status(403).json({
+            error: "Only employees can create customers!",
+        });
+    }
+    
     // Check if customer email already exists in the database
     const customerExists = await customerService.checkIfCustomerExists(req.body.customer_email);
 
@@ -36,9 +43,16 @@ async function createCustomer(req, res, next) {
 
 // Get all customers or search based on query
 async function getAllCustomers(req, res, next) {
+    // Check if the user is an employee
+    if (!req.employee_id) {
+        return res.status(403).json({
+            error: "Only employees can view customers!",
+        });
+    }
+    
     const searchQuery = req.query.search || '';
     // Pass the query to the service
-    const customers = await customerService.getAllCustomers(searchQuery);  
+    const customers = await customerService.getAllCustomers(searchQuery);
     if (!customers) {
         res.status(400).json({
             error: "Failed to get all customers!",
@@ -53,6 +67,20 @@ async function getAllCustomers(req, res, next) {
 
 // Controller to get a customer profile by ID
 async function getCustomerProfile(req, res, next) {
+    // Check if the user is an employee or the customer themselves
+    if (!req.employee_id && !req.customer_id) {
+        return res.status(403).json({
+            error: "Only employees or the customer themselves can view customer profiles!",
+        });
+    }
+    
+    // If the user is a customer, they can only view their own profile
+    if (req.customer_id && req.customer_id != req.params.customerId) {
+        return res.status(403).json({
+            error: "Customers can only view their own profile!",
+        });
+    }
+    
     const customerId = req.params.customerId;
     try {
         const customer = await customerService.getCustomer(customerId);
@@ -77,6 +105,20 @@ async function getCustomerProfile(req, res, next) {
 
 // Controller to get vehicles for a customer
 async function getCustomerVehicles(req, res, next) {
+    // Check if the user is an employee or the customer themselves
+    if (!req.employee_id && !req.customer_id) {
+        return res.status(403).json({
+            error: "Only employees or the customer themselves can view customer vehicles!",
+        });
+    }
+    
+    // If the user is a customer, they can only view their own vehicles
+    if (req.customer_id && req.customer_id != req.params.customerId) {
+        return res.status(403).json({
+            error: "Customers can only view their own vehicles!",
+        });
+    }
+    
     const customerId = req.params.customerId;
     try {
         const vehicles = await customerService.getVehiclesByCustomerId(customerId);
@@ -101,6 +143,20 @@ async function getCustomerVehicles(req, res, next) {
 
 // Controller to get orders for a customer
 async function getCustomerOrders(req, res, next) {
+    // Check if the user is an employee or the customer themselves
+    if (!req.employee_id && !req.customer_id) {
+        return res.status(403).json({
+            error: "Only employees or the customer themselves can view customer orders!",
+        });
+    }
+    
+    // If the user is a customer, they can only view their own orders
+    if (req.customer_id && req.customer_id != req.params.customerId) {
+        return res.status(403).json({
+            error: "Customers can only view their own orders!",
+        });
+    }
+    
     const customerId = req.params.customerId;
     try {
         const orders = await customerService.getOrdersByCustomerId(customerId);
@@ -125,6 +181,13 @@ async function getCustomerOrders(req, res, next) {
 
 // Controller to update a customer
 async function updateCustomer(req, res, next) {
+    // Check if the user is an employee
+    if (!req.employee_id) {
+        return res.status(403).json({
+            error: "Only employees can update customers!",
+        });
+    }
+    
     const customer_id = req.params.id;
     const customerData = req.body;
 
@@ -150,6 +213,13 @@ async function updateCustomer(req, res, next) {
 
 // Handle deleting a customer
 async function deleteCustomer(req, res) {
+    // Check if the user is an employee
+    if (!req.employee_id) {
+        return res.status(403).json({
+            error: "Only employees can delete customers!",
+        });
+    }
+    
     try {
         const customer_id = req.params.id;
 

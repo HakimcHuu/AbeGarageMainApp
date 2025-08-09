@@ -1,0 +1,135 @@
+/* Admin Layout */
+.admin-dashboard {
+  min-height: 100vh;
+  background-color: #f5f7fa;
+}
+
+.admin-left-side {
+  background-color: #001529;
+  min-height: 100vh;
+  color: white;
+  padding: 0 !important;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.admin-right-side {
+  padding: 24px;
+  min-height: 100vh;
+}
+
+/* Search and Filter */
+.search-container {
+  max-width: 300px;
+  margin-bottom: 16px;
+}
+
+.search-input .ant-input {
+  border-radius: 4px;
+  border: 1px solid #d9d9d9;
+}
+
+/* Table Styles */
+.custom-table {
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+}
+
+.custom-table .ant-table {
+  border-radius: 8px;
+}
+
+.custom-table .ant-table-thead > tr > th {
+  background: #fafafa;
+  color: #595959;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.custom-table .ant-table-tbody > tr > td {
+  border-bottom: 1px solid #f0f0f0;
+  padding: 12px 16px;
+  transition: background 0.3s;
+}
+
+.custom-table .ant-table-tbody > tr:hover > td {
+  background: #fafafa;
+}
+
+/* Status Badges */
+.ant-tag {
+  border-radius: 12px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+}
+
+.ant-tag .anticon {
+  margin-right: 4px;
+  font-size: 12px;
+}
+
+/* Action Buttons */
+.ant-btn-icon-only {
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 992px) {
+  .admin-right-side {
+    padding: 16px;
+  }
+  
+  .search-container {
+    max-width: 100%;
+    margin-bottom: 12px;
+  }
+}
+
+/* Card Styles */
+.ant-card {
+  border-radius: 8px;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+  margin-bottom: 16px;
+}
+
+.ant-card-head {
+  border-bottom: 1px solid #f0f0f0;
+  padding: 0 16px;
+}
+
+.ant-card-body {
+  padding: 0;
+}
+
+/* Utility Classes */
+.text-gray-500 {
+  color: #8c8c8c;
+}
+
+.font-medium {
+  font-weight: 500;
+}
+
+/* Animation for status changes */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.ant-table-tbody > tr {
+  animation: fadeIn 0.3s ease-out;
+}

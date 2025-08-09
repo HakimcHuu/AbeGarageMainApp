@@ -2,32 +2,81 @@ const conn = require('../config/db.config');
 
 // Service to create a new vehicle
 async function createVehicle(vehicleData, customer_id) {
-    const query = `
-        INSERT INTO customer_vehicle_info 
-        (customer_id, vehicle_year, vehicle_make, vehicle_model, vehicle_type, vehicle_mileage, vehicle_tag, vehicle_serial, vehicle_color) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  const query = `
+    INSERT INTO customer_vehicle_info
+    (customer_id, vehicle_make, vehicle_model, vehicle_year, vehicle_license_plate, vehicle_vin, vehicle_color, vehicle_mileage, vehicle_engine_number, vehicle_chassis_number, vehicle_transmission_type, vehicle_fuel_type, last_service_date, next_service_date, insurance_provider, insurance_expiry)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
-    console.log("Executing query with data:", customer_id, vehicleData); // Log the data
+  // Coerce/sanitize to satisfy schema in customer_vehicle_info (no vehicle_type/tag/serial columns)
+  const v = {
+    make: (vehicleData?.vehicle_make ?? "").toString().trim() || "-",
+    model: (vehicleData?.vehicle_model ?? "").toString().trim() || "-",
+    year: Number.parseInt(vehicleData?.vehicle_year, 10) || new Date().getFullYear(),
+    license_plate: (vehicleData?.vehicle_license_plate ?? "").toString().trim() || "-",
+    vin: ((vehicleData?.vehicle_vin ?? "").toString().trim() || null),
+    color: ((vehicleData?.vehicle_color ?? "").toString().trim() || null),
+    mileage: (Number.isNaN(Number.parseInt(vehicleData?.vehicle_mileage, 10)) ? null : Number.parseInt(vehicleData?.vehicle_mileage, 10)),
+    engine_number: ((vehicleData?.vehicle_engine_number ?? "").toString().trim() || null),
+    chassis_number: ((vehicleData?.vehicle_chassis_number ?? "").toString().trim() || null),
+    transmission_type: (vehicleData?.vehicle_transmission_type ?? "Automatic").toString().trim() || "Automatic",
+    fuel_type: (vehicleData?.vehicle_fuel_type ?? "Gasoline").toString().trim() || "Gasoline",
+    last_service_date: vehicleData?.last_service_date || null,
+    next_service_date: vehicleData?.next_service_date || null,
+    insurance_provider: ((vehicleData?.insurance_provider ?? "").toString().trim() || null),
+    insurance_expiry: vehicleData?.insurance_expiry || null,
+  };
 
+  console.log("[vehicle.service] Inserting vehicle for customer_id:", customer_id, "payload:", v);
+
+  try {
     const result = await conn.query(query, [
-        customer_id,
-        vehicleData.vehicle_year,
-        vehicleData.vehicle_make,
-        vehicleData.vehicle_model,
-        vehicleData.vehicle_type,
-        vehicleData.vehicle_mileage,
-        vehicleData.vehicle_tag,
-        vehicleData.vehicle_serial,
-        vehicleData.vehicle_color
+      customer_id,
+      v.make,
+      v.model,
+      v.year,
+      v.license_plate,
+      v.vin,
+      v.color,
+      v.mileage,
+      v.engine_number,
+      v.chassis_number,
+      v.transmission_type,
+      v.fuel_type,
+      v.last_service_date,
+      v.next_service_date,
+      v.insurance_provider,
+      v.insurance_expiry,
     ]);
 
-    console.log("Query result:", result); // Log the query result
+    console.log("[vehicle.service] Insert result:", result);
 
     if (result.affectedRows === 1) {
-        return { vehicle_id: result.insertId, ...vehicleData };
-    } else {
-        throw new Error('Failed to create vehicle');
+      return {
+        vehicle_id: result.insertId,
+        customer_id,
+        vehicle_make: v.make,
+        vehicle_model: v.model,
+        vehicle_year: v.year,
+        vehicle_license_plate: v.license_plate,
+        vehicle_vin: v.vin,
+        vehicle_color: v.color,
+        vehicle_mileage: v.mileage,
+        vehicle_engine_number: v.engine_number,
+        vehicle_chassis_number: v.chassis_number,
+        vehicle_transmission_type: v.transmission_type,
+        vehicle_fuel_type: v.fuel_type,
+        last_service_date: v.last_service_date,
+        next_service_date: v.next_service_date,
+        insurance_provider: v.insurance_provider,
+        insurance_expiry: v.insurance_expiry,
+      };
     }
+    throw new Error("Failed to create vehicle");
+  } catch (err) {
+    console.error("[vehicle.service] Create vehicle error:", err);
+    // Re-throw so controller can return details
+    throw err;
+  }
 }
 
 // Service to get all vehicles
@@ -46,28 +95,53 @@ async function getVehicleById(vehicleId) {
 
 // Service to update a vehicle
 async function updateVehicle(vehicleId, vehicleData) {
-    const query = `
-        UPDATE customer_vehicle_info 
-        SET vehicle_year = ?, vehicle_make = ?, vehicle_model = ?, vehicle_type = ?, vehicle_mileage = ?, vehicle_tag = ?, vehicle_serial = ?, vehicle_color = ?
-        WHERE vehicle_id = ?`;
-    
-    const result = await conn.query(query, [
-        vehicleData.vehicle_year,
-        vehicleData.vehicle_make,
-        vehicleData.vehicle_model,
-        vehicleData.vehicle_type,
-        vehicleData.vehicle_mileage,
-        vehicleData.vehicle_tag,
-        vehicleData.vehicle_serial,
-        vehicleData.vehicle_color,
-        vehicleId
-    ]);
+  const query = `
+    UPDATE customer_vehicle_info
+    SET vehicle_make = ?, vehicle_model = ?, vehicle_year = ?, vehicle_license_plate = ?, vehicle_vin = ?, vehicle_color = ?, vehicle_mileage = ?, vehicle_engine_number = ?, vehicle_chassis_number = ?, vehicle_transmission_type = ?, vehicle_fuel_type = ?, last_service_date = ?, next_service_date = ?, insurance_provider = ?, insurance_expiry = ?
+    WHERE vehicle_id = ?`;
 
-    if (result.affectedRows === 1) {
-        return { vehicle_id: vehicleId, ...vehicleData };
-    } else {
-        throw new Error('Failed to update vehicle');
-    }
+  const v = {
+    make: (vehicleData?.vehicle_make ?? "").toString().trim() || "-",
+    model: (vehicleData?.vehicle_model ?? "").toString().trim() || "-",
+    year: Number.parseInt(vehicleData?.vehicle_year, 10) || new Date().getFullYear(),
+    license_plate: (vehicleData?.vehicle_license_plate ?? "").toString().trim() || "-",
+    vin: ((vehicleData?.vehicle_vin ?? "").toString().trim() || null),
+    color: ((vehicleData?.vehicle_color ?? "").toString().trim() || null),
+    mileage: (Number.isNaN(Number.parseInt(vehicleData?.vehicle_mileage, 10)) ? null : Number.parseInt(vehicleData?.vehicle_mileage, 10)),
+    engine_number: ((vehicleData?.vehicle_engine_number ?? "").toString().trim() || null),
+    chassis_number: ((vehicleData?.vehicle_chassis_number ?? "").toString().trim() || null),
+    transmission_type: (vehicleData?.vehicle_transmission_type ?? "Automatic").toString().trim() || "Automatic",
+    fuel_type: (vehicleData?.vehicle_fuel_type ?? "Gasoline").toString().trim() || "Gasoline",
+    last_service_date: vehicleData?.last_service_date || null,
+    next_service_date: vehicleData?.next_service_date || null,
+    insurance_provider: ((vehicleData?.insurance_provider ?? "").toString().trim() || null),
+    insurance_expiry: vehicleData?.insurance_expiry || null,
+  };
+
+  const result = await conn.query(query, [
+    v.make,
+    v.model,
+    v.year,
+    v.license_plate,
+    v.vin,
+    v.color,
+    v.mileage,
+    v.engine_number,
+    v.chassis_number,
+    v.transmission_type,
+    v.fuel_type,
+    v.last_service_date,
+    v.next_service_date,
+    v.insurance_provider,
+    v.insurance_expiry,
+    vehicleId
+  ]);
+
+  if (result.affectedRows === 1) {
+    return { vehicle_id: vehicleId, ...vehicleData };
+  } else {
+    throw new Error('Failed to update vehicle');
+  }
 }
 
 // Service to delete a vehicle

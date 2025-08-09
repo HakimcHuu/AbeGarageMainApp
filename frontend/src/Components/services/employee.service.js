@@ -172,8 +172,8 @@
 
 
 
-// Import from the env
-const api_url = import.meta.env.VITE_API_URL;
+// Import from the env (fallback to localhost:8000 if not set)
+const api_url = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 // A function to send post request to create a new employee
 const createEmployee = async (formData, loggedInEmployeeToken) => {
@@ -310,6 +310,8 @@ const getEmployeeTasks = async (employee_id, token) => {
 // Function to update task status with detailed logging
 const updateTaskStatus = async (task_id, status, token) => {
   try {
+    console.log(`[UpdateTaskStatus] URL: ${api_url}/api/employees/tasks/${task_id}/status`);
+    console.log(`[UpdateTaskStatus] Token present:`, Boolean(token));
     console.log(`[UpdateTaskStatus] New status to send: ${status}`);
 
     const response = await fetch(`${api_url}/api/employees/tasks/${task_id}/status`, {

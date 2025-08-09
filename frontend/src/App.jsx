@@ -18,13 +18,18 @@ import AboutUs from "./pages/About";
 import HomeService from "./pages/Services"
 import AdminLanding from "./pages/admin/AdminLanding";
 import AddCustomer from "./pages/admin/AddCustomer";
-import CustomerProfile from "./pages/CustomerProfile";
+import CustomerProfile from "./Components/customer/CustomerProfile";
+import CustomerOrders from "./Components/customer/CustomerOrders";
 import AddOrder from "./pages/admin/AddOrder";
-import Orders from "./pages/admin/Orders"
-import OrderDetails from "./pages/admin/OrderDetails"
+import OrdersPage from "./pages/admin/Orders"
+import OrderDetailsPage from "./pages/admin/OrderDetails"
 import Services from "./pages/admin/Services";
 import EditOrderForm from "./Components/Admin/EditOrderForm/EditOrderForm";
 import MyOrders from "./pages/MyOrders";
+import EmployeeDashboard from "./pages/EmployeeDashboard";
+import AddVehicle from "./pages/admin/AddVehicle";
+import OrderDetails from './pages/admin/OrderDetails';
+
 function App() {
   return (
     <Router>
@@ -37,6 +42,14 @@ function App() {
           <Route path="/services" element={<HomeService />} />
           <Route path="/my-orders" element={<MyOrders />} />
           <Route
+            path="/employee-dashboard"
+            element={
+              <PrivateAuthRoute roles={[1]}>
+                <EmployeeDashboard />
+              </PrivateAuthRoute>
+            }
+          />
+          <Route
             path="/admin/admin-landing"
             element={
               <PrivateAuthRoute roles={[2, 3]}>
@@ -48,7 +61,7 @@ function App() {
             path="/admin/orders"
             element={
               <PrivateAuthRoute roles={[1, 2, 3]}>
-                <Orders />
+                <OrdersPage />
               </PrivateAuthRoute>
             }
           />
@@ -90,7 +103,15 @@ function App() {
             path="/admin/order/:orderId"
             element={
               <PrivateAuthRoute roles={[3]}>
-                <OrderDetails/>
+                <OrderDetailsPage/>
+              </PrivateAuthRoute>
+            }
+          />
+          <Route
+            path="/admin/orders/:orderId"
+            element={
+              <PrivateAuthRoute roles={[3]}>
+                <OrderDetails />
               </PrivateAuthRoute>
             }
           />
@@ -119,6 +140,14 @@ function App() {
             }
           />
           <Route
+            path="/customer-profile/:customer_id"
+            element={
+              <PrivateAuthRoute customerOnly>
+                <CustomerOrders />
+              </PrivateAuthRoute>
+            }
+          />
+          <Route
             path="/admin/customer-profile/:customer_id"
             element={
               <PrivateAuthRoute roles={[3]}>
@@ -127,18 +156,18 @@ function App() {
             }
           />
           <Route
-            path="/admin/add-order"
+            path="/admin/customer/:customer_id/add-vehicle"
             element={
-              <PrivateAuthRoute roles={[3]}>
-                <AddOrder />
+              <PrivateAuthRoute roles={[3, 2]}>
+                <AddVehicle />
               </PrivateAuthRoute>
             }
           />
           <Route
-            path="/admin/orders"
+            path="/admin/add-order"
             element={
               <PrivateAuthRoute roles={[3]}>
-                <Orders/>
+                <AddOrder />
               </PrivateAuthRoute>
             }
           />

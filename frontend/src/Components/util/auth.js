@@ -1,15 +1,24 @@
-// Function to read the data from the user's local storage  
+// Function to read the data from the user's local storage (employee or customer)
 const getAuth = async () => {
-  const employee = await JSON.parse(localStorage.getItem('employee'));
+  const employee = JSON.parse(localStorage.getItem('employee'));
   if (employee && employee.employee_token) {
     const decodedToken = await decodeTokenPayload(employee.employee_token);
     employee.employee_role = decodedToken.employee_role;
     employee.employee_id = decodedToken.employee_id;
     employee.employee_first_name = decodedToken.employee_first_name;
     return employee;
-  } else {
-    return {};
   }
+
+  const customer = JSON.parse(localStorage.getItem('customer'));
+  if (customer && customer.customer_token) {
+    const decoded = await decodeTokenPayload(customer.customer_token);
+    // Ensure id and name are present from token
+    customer.customer_id = decoded.customer_id ?? customer.customer_id;
+    customer.customer_first_name = decoded.customer_first_name ?? customer.customer_first_name;
+    return customer;
+  }
+
+  return {};
 };
 
 // Function to decode the payload from the token

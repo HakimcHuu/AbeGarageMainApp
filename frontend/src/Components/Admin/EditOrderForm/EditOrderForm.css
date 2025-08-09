@@ -1,0 +1,89 @@
+.edit-order-container {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.page-title {
+  margin-bottom: 16px;
+}
+
+.card-panel {
+  background: #fff;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.section-title {
+  margin-bottom: 12px;
+}
+
+.section-subtitle {
+  margin: 0 0 8px 0;
+  font-weight: 600;
+}
+
+.vehicle-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px 16px;
+}
+
+.assign-table {
+  border: 1px solid #eee;
+  border-radius: 6px;
+}
+
+.assign-header, .assign-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 12px;
+  padding: 10px 12px;
+}
+
+.assign-header {
+  background: #fafafa;
+  font-weight: 600;
+  border-bottom: 1px solid #eee;
+}
+
+.assign-row + .assign-row { border-top: 1px solid #f2f2f2; }
+
+.assign-select {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 16px;
+}
+
+.form-item label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.form-item input, .form-item textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.actions { margin-top: 16px; }
+
+.btn-primary {
+  background: #4a6cf7;
+  color: #fff;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 6px;
+}
+
+

@@ -574,11 +574,14 @@ const getEmployeeTasks = async (employee_id) => {
         os.service_completed,
         o.order_id,
         os.order_service_id,
-        -- Fetch the status specific to this order_service_id, if it exists
-        COALESCE(
-            (SELECT os_sub.order_status FROM order_status os_sub WHERE os_sub.order_service_id = os.order_service_id ORDER BY os_sub.order_status_id DESC LIMIT 1),
-            1 -- Default to 'Received' (status 1) if no specific status entry exists for the service
-        ) AS order_status, 
+        -- Latest status for this specific service from the order_status view (string -> numeric mapping)
+        CASE os_view.status
+            WHEN 'pending' THEN 1
+            WHEN 'in_progress' THEN 2
+            WHEN 'completed' THEN 3
+            WHEN 'cancelled' THEN 4
+            ELSE 1
+        END AS order_status,
         c.customer_id,
         c.customer_email,  
         ci.customer_first_name,
@@ -589,14 +592,15 @@ const getEmployeeTasks = async (employee_id) => {
         v.vehicle_model,
         v.vehicle_year,
         v.vehicle_mileage,
-        v.vehicle_tag
+        v.vehicle_license_plate
     FROM order_service_employee ose
     INNER JOIN order_services os ON ose.order_service_id = os.order_service_id
     INNER JOIN common_services cs ON os.service_id = cs.service_id
     INNER JOIN orders o ON os.order_id = o.order_id
     INNER JOIN customer c ON o.customer_id = c.customer_id   
     INNER JOIN customer_info ci ON c.customer_id = ci.customer_id   
-    INNER JOIN customer_vehicle_info v ON o.vehicle_id = v.vehicle_id   
+    INNER JOIN customer_vehicle_info v ON o.vehicle_id = v.vehicle_id  
+    LEFT JOIN order_status os_view ON os_view.order_service_id = os.order_service_id
     WHERE ose.employee_id = ?;
   `;
 
@@ -615,7 +619,7 @@ const getEmployeeTasks = async (employee_id) => {
 };
 
 // Update task status (service and overall order)
-const updateTaskStatus = async (order_service_id, newStatus) => {
+const updateTaskStatus = async (order_service_id, newStatus, changedByEmployeeId = null) => {
   try {
     console.log(`[updateTaskStatus] Updating task (order_service_id: ${order_service_id}) to status: ${newStatus}`);
 
@@ -638,50 +642,26 @@ const updateTaskStatus = async (order_service_id, newStatus) => {
       throw new Error(`No task found with order_service_id: ${order_service_id} to update service_completed.`);
     }
 
-    // 2. Update/Insert into `order_status` for the specific order_service_id
+    // 2. Update/Insert into `order_status_history` for the specific order_service_id
     // Check if an entry for this specific order_service_id already exists in order_status
-    const checkServiceStatusEntryQuery = `
-      SELECT order_status_id FROM order_status WHERE order_service_id = ?
-    `;
-    const existingEntry = await conn.query(checkServiceStatusEntryQuery, [order_service_id]);
-
-    if (existingEntry.length > 0) {
-      // Update existing entry
-      const updateServiceStatusQuery = `
-        UPDATE order_status
-        SET order_status = ?
-        WHERE order_service_id = ?
-      `;
-      await conn.query(updateServiceStatusQuery, [newStatus, order_service_id]);
-      console.log(`[updateTaskStatus] Updated existing order_status for service_id ${order_service_id}.`);
-    } else {
-      // Get the order_id for this order_service_id to create a new entry
-      const getOrderIdQuery = `
-        SELECT order_id FROM order_services WHERE order_service_id = ?
-      `;
-      const orderRow = await conn.query(getOrderIdQuery, [order_service_id]);
-      const orderId = orderRow[0]?.order_id;
-
-      if (!orderId) {
-        throw new Error(`Order ID not found for order_service_id: ${order_service_id}. Cannot insert service status.`);
-      }
-
-      // Insert new entry for this specific order_service_id
-      const insertServiceStatusQuery = `
-        INSERT INTO order_status (order_id, order_service_id, order_status)
-        VALUES (?, ?, ?)
-      `;
-      await conn.query(insertServiceStatusQuery, [orderId, order_service_id, newStatus]);
-      console.log(`[updateTaskStatus] Inserted new order_status for service_id ${order_service_id}.`);
-    }
-
-    // 3. Re-evaluate and update the overall `orders.order_status`
-    // First, get the order_id associated with this service
+    // Always append to history
     const getOrderIdQuery = `
       SELECT order_id FROM order_services WHERE order_service_id = ?
     `;
     const orderRow = await conn.query(getOrderIdQuery, [order_service_id]);
-    const orderId = orderRow[0]?.order_id;
+    const orderIdForHistory = orderRow[0]?.order_id;
+    const statusString = newStatus === 3 ? 'completed' : newStatus === 2 ? 'in_progress' : 'pending';
+    if (orderIdForHistory) {
+      const insertHistoryQuery = `
+        INSERT INTO order_status_history (order_id, order_service_id, status, changed_by)
+        VALUES (?, ?, ?, ?)
+      `;
+      await conn.query(insertHistoryQuery, [orderIdForHistory, order_service_id, statusString, changedByEmployeeId]);
+    }
+
+    // 3. Re-evaluate and update the overall `orders.order_status` and history
+    // Reuse the order id we already fetched above
+    const orderId = orderIdForHistory;
 
     if (!orderId) {
       console.warn(`[updateTaskStatus] Could not determine overall order status: No order found for order_service_id ${order_service_id}.`);
@@ -708,23 +688,14 @@ const updateTaskStatus = async (order_service_id, newStatus) => {
     }
     // If all are still 0 (not started), it remains 1 ('Received')
 
-    // Update the overall order status entry in `order_status` (where order_service_id IS NULL)
-    const updateOverallOrderStatusQuery = `
-      UPDATE order_status
-      SET order_status = ?
-      WHERE order_id = ? AND order_service_id IS NULL
-    `;
-    const resultOverallUpdate = await conn.query(updateOverallOrderStatusQuery, [overallOrderStatus, orderId]);
-
-    if (resultOverallUpdate.affectedRows === 0) {
-        // If no overall order status entry exists, create one
-        console.warn(`[updateTaskStatus] No overall order status entry found for order_id ${orderId}. Creating one.`);
-        const insertOverallOrderStatusQuery = `
-            INSERT INTO order_status (order_id, order_service_id, order_status)
-            VALUES (?, NULL, ?)
-        `;
-        await conn.query(insertOverallOrderStatusQuery, [orderId, overallOrderStatus]);
-    }
+    // Update the overall order record
+    const statusStringOverall = overallOrderStatus === 3 ? 'completed' : overallOrderStatus === 2 ? 'in_progress' : 'pending';
+    await conn.query(`UPDATE orders SET order_status = ? WHERE order_id = ?`, [statusStringOverall, orderId]);
+    // Append to history for overall order
+    await conn.query(
+      `INSERT INTO order_status_history (order_id, status, changed_by) VALUES (?, ?, ?)`,
+      [orderId, statusStringOverall, changedByEmployeeId]
+    );
 
     console.log(`[updateTaskStatus] Overall order_id ${orderId} status updated to: ${overallOrderStatus}`);
     return { success: true, message: 'Task status updated successfully, and overall order status re-evaluated.' };

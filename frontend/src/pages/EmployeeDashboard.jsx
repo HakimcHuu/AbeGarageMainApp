@@ -1,0 +1,255 @@
+import React, { useEffect, useState, useCallback, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
+import employeeService from "../Components/services/employee.service";
+import orderService from "../Components/services/order.service";
+import getAuth from "../Components/util/auth";
+import { loginService } from "../Components/services/login.service";
+
+function EmployeeDashboard() {
+  const navigate = useNavigate();
+  const [employee, setEmployee] = useState(null);
+  const [token, setToken] = useState("");
+  const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [expandedOrders, setExpandedOrders] = useState({});
+
+  const loadTasks = useCallback(async (empId, tok, opts = { silent: false }) => {
+    try {
+      if (!opts.silent) setLoading(true);
+      setError("");
+      const res = await employeeService.getEmployeeTasks(empId, tok);
+      const data = await res.json();
+      if (data.status === "success") {
+        setTasks(Array.isArray(data.data) ? data.data : []);
+      } else {
+        setError(data.message || "Failed to load tasks");
+      }
+    } catch (err) {
+      setError(err.message || "Failed to load tasks");
+    } finally {
+      if (!opts.silent) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const bootstrap = async () => {
+      try {
+        // Get decoded employee with role/id
+        const decoded = await getAuth();
+        // Pull token from localStorage (AuthContext stores employee_token too)
+        const raw = localStorage.getItem("employee");
+        const parsed = raw ? JSON.parse(raw) : {};
+        const empToken = parsed.employee_token || localStorage.getItem("employee_token") || "";
+
+        if (!decoded || !decoded.employee_id || !empToken) {
+          setError("Not authenticated as employee");
+          return;
+        }
+        setEmployee(decoded);
+        setToken(empToken);
+        await loadTasks(decoded.employee_id, empToken, { silent: false });
+      } catch (err) {
+        setError("Unable to initialize employee dashboard");
+      }
+    };
+    bootstrap();
+  }, [loadTasks]);
+
+  // Polling for near-real-time sync
+  useEffect(() => {
+    if (!employee || !token) return;
+    const id = setInterval(() => {
+      loadTasks(employee.employee_id, token, { silent: true });
+    }, 5000);
+    return () => clearInterval(id);
+  }, [employee, token, loadTasks]);
+
+  const updateStatus = async (taskId, status) => {
+    try {
+      setBusy(true);
+      setError("");
+      await employeeService.updateTaskStatus(taskId, status, token);
+      // Reload tasks after status change
+      await loadTasks(employee.employee_id, token);
+    } catch (err) {
+      setError(err.message || "Failed to update task status");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleAccept = (taskId) => updateStatus(taskId, 2); // In Progress
+  const handleInProgress = (taskId) => updateStatus(taskId, 2);
+  const handleCompleted = (taskId) => updateStatus(taskId, 3);
+
+  // Group tasks by order
+  const tasksByOrder = useMemo(() => {
+    const grouped = {};
+    for (const t of tasks) {
+      if (!grouped[t.order_id]) grouped[t.order_id] = [];
+      grouped[t.order_id].push(t);
+    }
+    return grouped;
+  }, [tasks]);
+
+  const isTaskChecked = (t) => Number(t.order_status) >= 2;
+
+  const handleSubmitOrder = (orderId) => {
+    // Navigate to admin orders page for review/approval
+    navigate(`/admin/orders?orderId=${orderId}`);
+  };
+
+  const toggleTask = async (orderId, task, itemsInOrder) => {
+    try {
+      setBusy(true);
+      setError("");
+      // Change logic: checked => Completed (3), unchecked => Received (1)
+      const nextStatus = isTaskChecked(task) ? 1 : 3;
+      await employeeService.updateTaskStatus(task.order_service_id, nextStatus, token);
+      // Predict aggregate for the order without forcing a full reload
+      const allChecked = (itemsInOrder || []).length > 0 && (itemsInOrder || []).every((t) =>
+        t.order_service_id === task.order_service_id ? (nextStatus === 3) : Number(t.order_status) === 3
+      );
+      if (allChecked) {
+        // Set order to Completed (authorized)
+        await orderService.updateOrderStatus(orderId, 3, token);
+      } else {
+        // Ensure order is at least In Progress
+        await orderService.updateOrderStatus(orderId, 2, token);
+      }
+      // Single silent refresh to sync state without blinking
+      await loadTasks(employee.employee_id, token, { silent: true });
+    } catch (err) {
+      setError(err.message || "Failed to update task/order status");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      // Clear server-side active role, then clear local storage
+      await loginService.logOut("employee", true);
+    } catch {
+      // ignore server error, still clear client storage
+    } finally {
+      localStorage.removeItem("employee");
+      localStorage.removeItem("employee_token");
+      navigate("/login");
+    }
+  };
+
+  const prettyStatus = (statusNum) => {
+    const map = { 1: "Received", 2: "In Progress", 3: "Completed" };
+    return map[Number(statusNum)] || "Pending";
+  };
+
+  return (
+    <section className="contact-section">
+      <div className="auto-container">
+        <div className="sec-title style-two" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h2>Welcome, {employee?.employee_first_name || "Employee"}</h2></div>
+
+        <div className="row clearfix">
+          <div className="col-md-12">
+            {error && (
+              <div className="validation-error" role="alert" style={{ marginBottom: 16 }}>
+                {error}
+              </div>
+            )}
+            {loading ? (
+              <div>Loading tasks...</div>
+            ) : tasks.length === 0 ? (
+              <div>No tasks assigned.</div>
+            ) : (
+              <div className="row">
+                {Object.entries(tasksByOrder).map(([orderId, items]) => {
+                  const isExpanded = !!expandedOrders[orderId];
+                  const allChecked = items.every((t) => Number(t.order_status) >= 2);
+                  return (
+                    <div key={orderId} className="col-md-12" style={{ marginBottom: 16 }}>
+                      <div className="card" style={{ padding: 16, borderRadius: 6, border: "1px solid #eee" }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ fontWeight: 700 }}>
+                            Order #{orderId} • {allChecked ? 'All tasks checked' : 'Tasks pending'}
+                          </div>
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            {allChecked && (
+                              <button
+                                className="theme-btn btn-style-one"
+                                onClick={() => handleSubmitOrder(orderId)}
+                                disabled={busy}
+                              >
+                                <span>Submit to Admin</span>
+                              </button>
+                            )}
+                            <button
+                              className="theme-btn btn-style-one"
+                              onClick={() => setExpandedOrders((prev) => ({ ...prev, [orderId]: !isExpanded }))}
+                            >
+                              <span>{isExpanded ? 'Hide Tasks' : 'Show Tasks'}</span>
+                            </button>
+                          </div>
+                        </div>
+                        {isExpanded && (
+                          <div style={{ marginTop: 12 }}>
+                            <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#f8f9fa', borderRadius: '4px' }}>
+                              <div style={{ lineHeight: '1.8' }}>
+                                <div><strong>Customer:</strong> {items[0].customer_first_name} {items[0].customer_last_name}</div>
+                                <div><strong>Vehicle:</strong> {items[0].vehicle_year} {items[0].vehicle_make} {items[0].vehicle_model}</div>
+                              </div>
+                            </div>
+                            {items.map((t) => (
+                              <div 
+                                key={t.order_service_id} 
+                                style={{ 
+                                  display: 'flex', 
+                                  alignItems: 'center', 
+                                  justifyContent: 'space-between', 
+                                  padding: '12px 0', 
+                                  borderBottom: '1px solid #f0f0f0' 
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={isTaskChecked(t)}
+                                    onChange={() => toggleTask(orderId, t, items)}
+                                    disabled={busy}
+                                    style={{ width: '18px', height: '18px' }}
+                                  />
+                                  <div>
+                                    <div style={{ fontWeight: 500 }}>{t.service_name}</div>
+                                    <div style={{ fontSize: '0.9em', color: '#666' }}>{t.service_description}</div>
+                                  </div>
+                                </div>
+                                <div style={{ 
+                                  padding: '4px 8px', 
+                                  borderRadius: '4px', 
+                                  backgroundColor: t.order_status === 3 ? '#d4edda' : t.order_status === 2 ? '#fff3cd' : '#f8d7da',
+                                  color: t.order_status === 3 ? '#155724' : t.order_status === 2 ? '#856404' : '#721c24',
+                                  fontWeight: 500,
+                                  fontSize: '0.85em'
+                                }}>
+                                  {prettyStatus(t.order_status)}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export default EmployeeDashboard;

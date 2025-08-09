@@ -8,39 +8,32 @@ import AdminMenu from "../../Components/Admin/AdminMenu/AdminMenu";
 // Import the EmployeesList component
 import CustomersList from "../../Components/Admin/CustomerList/CustomerList";
 function Customers() {
-  // Destructure the auth hook
-  const { isLogged, isAdmin } = useAuth();
+  // Rely on route guard (PrivateAuthRoute) for role checks.
+  // Only require that user is logged (employee) here.
+  const { isLogged } = useAuth();
 
-  if (isLogged) {
-    if (isAdmin) {
-      return (
-        <div>
-          <div className="container-fluid admin-pages">
-            <div className="row">
-              <div className="col-md-3 admin-left-side">
-                <AdminMenu />
-              </div>
-              <div className="col-md-9 admin-right-side">
-                <CustomersList />
-              </div>
-            </div>
-          </div>
-        </div>
-      );
-    } else {
-      return (
-        <div>
-          <h1>You are not authorized to access this page</h1>
-        </div>
-      );
-    }
-  } else {
+  if (!isLogged) {
     return (
       <div>
         <LoginForm />
       </div>
     );
   }
+
+  return (
+    <div>
+      <div className="container-fluid admin-pages">
+        <div className="row">
+          <div className="col-md-3 admin-left-side">
+            <AdminMenu />
+          </div>
+          <div className="col-md-9 admin-right-side">
+            <CustomersList />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default Customers;

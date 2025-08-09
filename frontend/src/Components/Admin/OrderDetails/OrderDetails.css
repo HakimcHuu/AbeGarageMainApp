@@ -1,0 +1,154 @@
+/* Order Details Container */
+.order-details-container {
+  padding: 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* Loading and Error States */
+.loading-container,
+.error-container,
+.no-data {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 300px;
+  text-align: center;
+  padding: 24px;
+}
+
+.loading-container .ant-spin {
+  margin-bottom: 16px;
+}
+
+.error-container .ant-alert {
+  margin-bottom: 16px;
+  max-width: 600px;
+  width: 100%;
+}
+
+/* Order Actions */
+.order-actions {
+  margin-bottom: 16px;
+}
+
+.back-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+/* Order Details Grid */
+.order-details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+/* Order Detail Card */
+.order-detail-card {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  padding: 16px;
+  height: 100%;
+}
+
+.detail-card-header {
+  border-bottom: 1px solid #f0f0f0;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+}
+
+.detail-card-header h4 {
+  margin: 0;
+  color: #1890ff;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+/* Order Summary */
+.order-summary {
+  max-width: 400px;
+  margin: 0 auto 24px;
+  padding: 16px;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed #f0f0f0;
+}
+
+.summary-row:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.summary-row.total {
+  font-weight: 600;
+  font-size: 1.1em;
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 2px solid #e8e8e8;
+}
+
+/* Order Notes */
+.order-notes {
+  background: #fffbe6;
+  border: 1px solid #ffe58f;
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 16px;
+}
+
+.order-notes p {
+  margin: 0;
+  white-space: pre-line;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+  .order-details-container {
+    padding: 16px;
+  }
+  
+  .order-details-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .order-summary {
+    max-width: 100%;
+  }
+}
+
+/* Print Styles */
+@media print {
+  .order-actions,
+  .ant-tag,
+  .ant-divider {
+    display: none !important;
+  }
+  
+  .order-details-container {
+    padding: 0;
+  }
+  
+  .ant-card {
+    border: none;
+    box-shadow: none;
+  }
+  
+  .order-detail-card {
+    page-break-inside: avoid;
+  }
+}

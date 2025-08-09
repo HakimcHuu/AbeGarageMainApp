@@ -65,8 +65,17 @@ function LoginForm() {
 
         setIsLogged(true);
 
-        // Redirect to home after successful employee/admin login
-        navigate("/");
+        // Redirect based on role:
+        // 1 (Employee) -> /employee-dashboard
+        // 2 (Manager) or 3 (Admin) -> /admin/admin-landing
+        const role = Number(response.data.employee_role);
+        if (role === 1) {
+          navigate("/employee-dashboard");
+        } else if (role === 2 || role === 3) {
+          navigate("/admin/admin-landing");
+        } else {
+          navigate("/");
+        }
       } else {
         setServerError(response.message);
       }

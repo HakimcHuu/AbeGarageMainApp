@@ -3,7 +3,9 @@ import { useNavigate } from "react-router-dom";
 import Service from "../../services/order.service";
 import ServiceSelection from "../AddServiceForm/SelectService";
 import getAuth from "../../util/auth";
-import {Table, Form} from 'react-bootstrap';
+import { Table, Form, Button, Card, Badge, Container, Row, Col, Alert, Spinner } from 'react-bootstrap';
+import { FaSearch, FaUser, FaCar, FaCalendarAlt, FaDollarSign, FaClipboard, FaArrowLeft } from 'react-icons/fa';
+import './AddOrderForm.css';
 
 const AddOrderForm = () => {
   const [searchQuery, setSearchQuery] = useState("");
@@ -20,32 +22,45 @@ const AddOrderForm = () => {
   const [additionalRequest, setAdditionalRequest] = useState("");
   const [orderPrice, setOrderPrice] = useState("");
   const [estimatedCompletionDate, setEstimatedCompletionDate] = useState("");
+  const [currentStep, setCurrentStep] = useState(1);
 
   const navigate = useNavigate();
 
-  // Fetch customers based on the search query
   useEffect(() => {
-    if (searchQuery) {
+    if (searchQuery && searchQuery.trim().length > 1) { 
       const fetchCustomers = async () => {
         setLoading(true);
         try {
-          const response = await Service.getCustomers(searchQuery);
+          const response = await Service.getCustomers(searchQuery.trim());
           if (response.status === "success") {
-            setCustomers(response.customers || []);
+            const filtered = response.customers?.filter(customer => 
+              `${customer.customer_first_name} ${customer.customer_last_name}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
+              customer.customer_email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+              customer.customer_phone?.includes(searchQuery)
+            ) || [];
+            setFilteredCustomers(filtered);
           } else {
-            setCustomers([]);
+            setFilteredCustomers([]);
           }
         } catch (err) {
-          setError("Error fetching customers. Please try again.");
+          console.error('Error searching customers:', err);
+          setError("Error searching customers. Please try again.");
+          setFilteredCustomers([]);
         } finally {
           setLoading(false);
         }
       };
-      fetchCustomers();
+      
+      const debounceTimer = setTimeout(() => {
+        fetchCustomers();
+      }, 300);
+      
+      return () => clearTimeout(debounceTimer);
+    } else {
+      setFilteredCustomers([]);
     }
   }, [searchQuery]);
 
-  // Fetch employees only after services have been selected
   useEffect(() => {
     if (selectedServices.length > 0) {
       const fetchEmployees = async () => {
@@ -60,21 +75,6 @@ const AddOrderForm = () => {
     }
   }, [selectedServices]);
 
-  // Filter customers based on the search query
-  useEffect(() => {
-    if (searchQuery && Array.isArray(customers)) {
-      const filtered = customers.filter(
-        (customer) =>
-          customer.customer_first_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          customer.customer_last_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          customer.customer_email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          customer.customer_phone.includes(searchQuery)
-      );
-      setFilteredCustomers(filtered);
-    } else {
-      setFilteredCustomers([]);
-    }
-  }, [searchQuery, customers]);
 
   const handleSelectCustomer = async (customer) => {
     setSelectedCustomer(customer);
@@ -82,6 +82,7 @@ const AddOrderForm = () => {
       setLoading(true);
       const vehiclesData = await Service.getVehicles(customer.customer_id);
       setVehicles(vehiclesData || []);
+      setCurrentStep(2);
     } catch (err) {
       setError("Error fetching vehicles. Please try again.");
     } finally {
@@ -93,24 +94,36 @@ const AddOrderForm = () => {
     setSelectedVehicle(vehicle);
   };
 
+  // Accept selection from ServiceSelection (now sends objects with id+name)
   const handleSelectServices = (services) => {
-    const updatedServiceData = services.map((serviceId) => ({
-      service_id: serviceId,
+    // Normalize to objects { service_id, service_name }
+    const normalized = services.map((s) =>
+      typeof s === "object"
+        ? { service_id: s.service_id, service_name: s.service_name }
+        : { service_id: s, service_name: `Service #${s}` }
+    );
+
+    // Store selected services with name and completion flag
+    const updatedServiceData = normalized.map((s) => ({
+      service_id: s.service_id,
+      service_name: s.service_name,
       service_completed: 0,
     }));
     setSelectedServices(updatedServiceData);
 
-    const assignments = updatedServiceData.map((service) => ({
-      service_id: service.service_id,
+    // Initialize assignments for each selected service
+    const assignments = normalized.map((s) => ({
+      service_id: s.service_id,
       employee_id: null,
     }));
     setServiceAssignments(assignments);
   };
 
   const handleAssignEmployeeToService = (serviceId, employeeId) => {
+    const parsedId = employeeId === "" || employeeId === null || employeeId === undefined ? null : Number(employeeId);
     const updatedAssignments = serviceAssignments.map((assignment) => {
       if (assignment.service_id === serviceId) {
-        return { ...assignment, employee_id: employeeId };
+        return { ...assignment, employee_id: parsedId };
       }
       return assignment;
     });
@@ -120,68 +133,63 @@ const AddOrderForm = () => {
   const allEmployeesAssigned = selectedServices.length > 0 &&
     serviceAssignments.every((assignment) => assignment.employee_id !== null);
 
-    const handleCreateOrder = async () => {
-      if (
-        !selectedCustomer ||
-        !selectedVehicle ||
-        !orderPrice ||
-        !estimatedCompletionDate ||
-        !additionalRequest ||
-        selectedServices.length === 0 ||
-        serviceAssignments.length === 0
-      ) {
-        alert("Please fill in all required fields.");
-        return;
+  const handleCreateOrder = async () => {
+    if (
+      !selectedCustomer ||
+      !selectedVehicle ||
+      !orderPrice ||
+      !estimatedCompletionDate ||
+      !additionalRequest ||
+      selectedServices.length === 0 ||
+      serviceAssignments.length === 0
+    ) {
+      alert("Please fill in all required fields.");
+      return;
+    }
+    
+    try {
+      const employee = await getAuth();
+    
+      if (!employee || !employee.employee_id) {
+        throw new Error("Employee not found or not authenticated.");
       }
     
-      try {
-        const employee = await getAuth();
+      const orderData = {
+        customer_id: selectedCustomer.customer_id,
+        vehicle_id: selectedVehicle.vehicle_id,
+        employee_id: employee.employee_id,
+        active_order: 1,
+        order_hash: generateOrderHash(),
+        order_status: 1,
+      };
     
-        if (!employee || !employee.employee_id) {
-          throw new Error("Employee not found or not authenticated.");
-        }
+      const orderInfoData = {
+        order_total_price: orderPrice,
+        additional_request: additionalRequest,
+        estimated_completion_date: estimatedCompletionDate,
+        additional_requests_completed: 0,
+      };
     
-        // Log data for order creation
-        const orderData = {
-          customer_id: selectedCustomer.customer_id,
-          vehicle_id: selectedVehicle.vehicle_id,
-          employee_id: employee.employee_id,
-          active_order: 1,
-          order_hash: generateOrderHash(),
-          order_status: 1,
-        };
+      const orderServiceData = serviceAssignments.map((assignment) => ({
+        service_id: assignment.service_id,
+        employee_id: assignment.employee_id,
+        service_completed: 0, 
+      }));
     
-        const orderInfoData = {
-          order_total_price: orderPrice,
-          additional_request: additionalRequest,
-          estimated_completion_date: estimatedCompletionDate,
-          additional_requests_completed: 0,
-        };
+      await Service.createOrder({
+        orderData,
+        orderInfoData,
+        orderServiceData,
+      });
     
-        
-        const orderServiceData = serviceAssignments.map((assignment) => ({
-          service_id: assignment.service_id,
-          employee_id: assignment.employee_id,
-          service_completed: 0, 
-        }));
+      alert("Order created successfully.");
+      navigate("/admin/orders");
+    } catch (err) {
+      setError("Error creating the order. Please try again.");
+      console.error("Error in handleCreateOrder:", err);
+    }
+  };
     
-        // Send the order creation request to the backend
-        await Service.createOrder({
-          orderData,
-          orderInfoData,
-          orderServiceData,
-        });
-    
-        alert("Order created successfully.");
-        navigate("/admin/orders");
-      } catch (err) {
-        setError("Error creating the order. Please try again.");
-        console.error("Error in handleCreateOrder:", err);
-      }
-    };
-    
-  
-
   const generateOrderHash = () => {
     return (
       Math.random().toString(36).substring(2, 15) +
@@ -190,273 +198,387 @@ const AddOrderForm = () => {
   };
 
   return (
-    <div className="container pb-5">
-      <div className="flex items-center gap-4 mt-4 mb-4">
-        <h2 className="page-titles text-3xl font-bold mb-4 mt-4">
-          Create a new order
-        </h2>
-        <div className="h-1 w-16 bg-red-500 mr-2 mt-4"></div>
+    <Container className="add-order-container py-4">
+      <div className="d-flex align-items-center mb-4">
+        <Button 
+          variant="link" 
+          onClick={() => currentStep > 1 ? setCurrentStep(prev => prev - 1) : navigate(-1)}
+          className="me-3 p-0 back-button"
+        >
+          <FaArrowLeft size={24} />
+        </Button>
+        <h2 className="mb-0">Create New Order</h2>
       </div>
-      {selectedCustomer ? (
-        <div className="selected-customer-detail p-3">
-          <div className="flex container justify-between bg-slate-50 py-10 px-5 border rounded-lg ">
-            <div className=" ">
-              <h3 className="font-bold text-2xl text-blue-900 uppercase">
-                {selectedCustomer.customer_first_name}{" "}
-                {selectedCustomer.customer_last_name}
-              </h3>
-              <p>Email: {selectedCustomer.customer_email}</p>
-              <p>Phone Number: {selectedCustomer.customer_phone}</p>
-            </div>
-            <div className="text-right mt-0">
-              <button
-                className="btn btn-sm btn-danger"
-                onClick={() => {
-                  setSelectedCustomer(null);
-                  setSelectedVehicle(null);
-                  setVehicles([]);
-                }}
-              >
-                <i className="fa fa-times"></i>
-              </button>
+
+      <div className="steps-container mb-5">
+        {[1, 2, 3, 4].map((step) => (
+          <div key={step} className={`step ${currentStep >= step ? 'active' : ''}`}>
+            <div className="step-number">{step}</div>
+            <div className="step-label">
+              {step === 1 ? 'Customer' : step === 2 ? 'Vehicle' : step === 3 ? 'Services' : 'Review'}
             </div>
           </div>
+        ))}
+      </div>
 
-          {!selectedVehicle && (
-            <>
-              <h4 className="mt-4">Select a Vehicle</h4>
-              {vehicles.length === 0 ? (
-                <>
-                  <p>No vehicles found for this customer.</p>
-                  <button
-                    className="theme-btn btn-style-one w-56"
-                    type="submit"
-                  >
-                    <span>Add Vehicle</span>
-                  </button>
-                </>
-              ) : (
-                <>
-                  <table className="table table-bordered table-hover mt-3">
-                    <thead>
-                      <tr>
-                        <th>Make</th>
-                        <th>Model</th>
-                        <th>Year</th>
-                        <th>Type</th>
-                        <th>Mileage</th>
-                        <th>Tag</th>
-                        <th>Plate</th>
-                        <th>Select</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {vehicles.map((vehicle) => (
-                        <tr
-                          key={vehicle.vehicle_id}
-                          onClick={() => handleSelectVehicle(vehicle)}
-                        >
-                          <td>{vehicle.vehicle_make}</td>
-                          <td>{vehicle.vehicle_model}</td>
-                          <td>{vehicle.vehicle_year}</td>
-                          <td>{vehicle.vehicle_type}</td>
-                          <td>{vehicle.vehicle_mileage}</td>
-                          <td>{vehicle.vehicle_tag}</td>
-                          <td>{vehicle.vehicle_serial}</td>
-                          <td>
-                            <button
-                              className={`btn btn-sm ${
-                                selectedVehicle === vehicle
-                                  ? "btn-success"
-                                  : "btn-primary"
-                              }`}
-                              onClick={() => handleSelectVehicle(vehicle)}
-                            >
-                              {selectedVehicle === vehicle
-                                ? "Selected"
-                                : "Select"}
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <button
-                    className="theme-btn btn-style-one w-56"
-                    type="submit"
-                  >
-                    <span>Add Vehicle</span>
-                  </button>
-                </>
+      {error && <Alert variant="danger" className="mb-4">{error}</Alert>}
+
+      {currentStep === 1 && (
+        <Card className="mb-4 border-0 shadow-sm">
+          <Card.Header className="bg-primary text-white">
+            <h5 className="mb-0"><FaUser className="me-2" /> Select Customer</h5>
+          </Card.Header>
+          <Card.Body className="p-4">
+            <div className="search-section">
+              <div className="search-container">
+                <div className="search-input-wrapper">
+                  <FaSearch className="search-icon" />
+                  <Form.Control
+                    type="text"
+                    placeholder="Search by name, email, or phone..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="search-input"
+                  />
+                </div>
+                <Button 
+                  variant="primary" 
+                  onClick={() => navigate('/admin/add-customer')}
+                  className="new-customer-btn"
+                >
+                  <span className="d-none d-md-inline">New Customer</span>
+                  <span className="d-inline d-md-none">+ New</span>
+                </Button>
+              </div>
+              
+              {loading && (
+                <div className="mt-3 text-center">
+                  <Spinner animation="border" variant="primary" size="sm" className="me-2" />
+                  <span>Searching customers...</span>
+                </div>
               )}
-            </>
-          )}
-
-          {selectedVehicle && (
-            <>
-              <div className="flex container justify-between bg-slate-50 py-6 px-5 border rounded-lg my-4">
-                <div className="selected-vehicle-details">
-                  <h4 className="font-bold text-2xl text-blue-900 uppercase">
-                    {selectedVehicle.vehicle_model}
-                  </h4>
-                  <p>Vehicle Year: {selectedVehicle.vehicle_year}</p>
-                  <p>Vehicle Type: {selectedVehicle.vehicle_type}</p>
-                  <p>Vehicle Mileage: {selectedVehicle.vehicle_mileage}</p>
-                  <p>Tag: {selectedVehicle.vehicle_tag}</p>
-                  <p>Plate: {selectedVehicle.vehicle_serial}</p>
-                </div>
-                <div className="text-right mt-0">
-                  <button
-                    className="btn btn-sm btn-danger"
-                    onClick={() => {
-                      setSelectedCustomer(null);
-                      setSelectedVehicle(null);
-                      setVehicles([]);
-                    }}
-                  >
-                    <i className="fa fa-times"></i>
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex pb-10">
-                <ServiceSelection onSelectServices={handleSelectServices} />
-                <div className="ml-20">
-                  <h4 className="mt-4">Assign Employees</h4>
-                  <div className="form-group">
-                    {selectedServices.map((service) => (
-                      <div key={service.service_id} className="mt-3">
-                        <h5>{`Assign Employee to ${service.service_id}`}</h5>
-                        <select
-                          className="form-control"
-                          onChange={(e) =>
-                            handleAssignEmployeeToService(
-                              service.service_id,
-                              e.target.value
-                            )
-                          }
-                        >
-                          <option value="">Select an Employee</option>
-                          {employees.map((emp) => (
-                            <option
-                              key={emp.employee_id}
-                              value={emp.employee_id}
-                            >
-                              {`${emp.employee_first_name} ${emp.employee_last_name}`}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    ))}
-                  </div>
-
-                  {allEmployeesAssigned && (
-                    <div>
-                      <input
-                        type="text"
-                        className="form-control mt-3"
-                        placeholder="Enter service description"
-                        value={additionalRequest}
-                        onChange={(e) => setAdditionalRequest(e.target.value)}
-                      />
-                      <input
-                        type="number"
-                        className="form-control mt-3"
-                        placeholder="Enter price"
-                        value={orderPrice}
-                        onChange={(e) => setOrderPrice(e.target.value)}
-                      />
-                      <input
-                        type="date"
-                        className="form-control mt-3"
-                        value={estimatedCompletionDate}
-                        onChange={(e) =>
-                          setEstimatedCompletionDate(e.target.value)
-                        }
-                      />
-                      <button
-                        className="btn btn-danger mt-4"
-                        onClick={handleCreateOrder}
-                      >
-                        Submit Order
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      ) : (
-        <>
-          <div className="search-bar">
-            <Form className="">
-              <div className="input-group">
-                <Form.Control
-                  type="text"
-                  placeholder="Search for a customer using first name, last name, email, or phone number"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="form-control-sm py-2"
-                />
-                <span className="input-group-text bg-white text-gray-800">
-                  <i className="fas fa-search"></i>
-                </span>
-              </div>
-            </Form>
-            <button
-              className="buttonStyle mt-3 text-sm"
-              onClick={() => (window.location.href = "/admin/add-customer")}
-            >
-              ADD NEW CUSTOMER
-            </button>
-          </div>
-
-          {loading && <p>Loading customers...</p>}
-          {error && <p className="text-danger">{error}</p>}
-
-          {!loading && !error && searchQuery && (
-            <Table striped bordered hover responsive className="mt-4">
-              <thead>
-                <tr>
-                  <th>First Name</th>
-                  <th>Last Name</th>
-                  <th>Email</th>
-                  <th>Phone</th>
-                  <th>Select</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredCustomers.length > 0 ? (
-                  filteredCustomers.map((customer) => (
-                    <tr
+              
+              {!loading && searchQuery && filteredCustomers.length > 0 && (
+                <div className="search-results mt-2">
+                  {filteredCustomers.map(customer => (
+                    <div 
                       key={customer.customer_id}
+                      className={`search-result-item ${
+                        selectedCustomer?.customer_id === customer.customer_id ? 'active' : ''
+                      }`}
                       onClick={() => handleSelectCustomer(customer)}
                     >
-                      <td>{customer.customer_first_name}</td>
-                      <td>{customer.customer_last_name}</td>
-                      <td>{customer.customer_email}</td>
-                      <td>{customer.customer_phone}</td>
-                      <td>
-                        <button className="btn btn-sm ">
-                          <i className="fas fa-hand-pointer hover:text-blue-700"></i>
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan="5" className="text-center">
-                      No customers found.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </Table>
-          )}
-        </>
+                      <div className="customer-name">
+                        {customer.customer_first_name} {customer.customer_last_name}
+                      </div>
+                      <div className="customer-details">
+                        <span>{customer.customer_email}</span>
+                        {customer.customer_phone && (
+                          <span className="ms-2">• {customer.customer_phone}</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {!loading && searchQuery && filteredCustomers.length === 0 && (
+                <div className="no-results mt-3 text-center text-muted">
+                  No customers found. Try a different search or add a new customer.
+                </div>
+              )}
+            </div>
+            
+            {selectedCustomer && (
+              <Card className="selected-customer-card mt-4">
+                <Card.Body>
+                  <div className="d-flex justify-content-between align-items-start">
+                    <div>
+                      <h6 className="mb-1">Selected Customer</h6>
+                      <h5 className="mb-2">
+                        {selectedCustomer.customer_first_name} {selectedCustomer.customer_last_name}
+                      </h5>
+                      <div className="text-muted">
+                        <div>{selectedCustomer.customer_email}</div>
+                        {selectedCustomer.customer_phone && (
+                          <div className="mt-1">{selectedCustomer.customer_phone}</div>
+                        )}
+                      </div>
+                    </div>
+                    <Button 
+                      variant="outline-secondary" 
+                      size="sm"
+                      onClick={() => setSelectedCustomer(null)}
+                    >
+                      Change
+                    </Button>
+                  </div>
+                </Card.Body>
+              </Card>
+            )}
+          </Card.Body>
+        </Card>
       )}
-    </div>
+      
+      {currentStep === 2 && selectedCustomer && (
+        <Card className="mb-4">
+          <Card.Header className="bg-primary text-white">
+            <h5 className="mb-0"><FaCar className="me-2" /> Select Vehicle</h5>
+          </Card.Header>
+          <Card.Body>
+            <div className="customer-info mb-4 p-3 bg-light rounded">
+              <h6>Customer: {selectedCustomer.customer_first_name} {selectedCustomer.customer_last_name}</h6>
+              <p className="mb-1">Email: {selectedCustomer.customer_email}</p>
+              <p className="mb-0">Phone: {selectedCustomer.customer_phone}</p>
+            </div>
+
+            {loading ? (
+              <div className="text-center py-4">
+                <Spinner animation="border" />
+                <p className="mt-2">Loading vehicles...</p>
+              </div>
+            ) : vehicles.length > 0 ? (
+              <>
+                <Table hover responsive className="vehicle-table">
+                  <thead>
+                    <tr>
+                      <th>Make</th>
+                      <th>Model</th>
+                      <th>Year</th>
+                      <th>License Plate</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vehicles.map((vehicle) => (
+                      <tr 
+                        key={vehicle.vehicle_id}
+                        className={selectedVehicle?.vehicle_id === vehicle.vehicle_id ? 'table-primary' : ''}
+                        onClick={() => setSelectedVehicle(vehicle)}
+                      >
+                        <td>{vehicle.vehicle_make}</td>
+                        <td>{vehicle.vehicle_model}</td>
+                        <td>{vehicle.vehicle_year}</td>
+                        <td>{vehicle.vehicle_serial}</td>
+                        <td>
+                          <Button 
+                            variant={selectedVehicle?.vehicle_id === vehicle.vehicle_id ? 'primary' : 'outline-primary'}
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedVehicle(vehicle);
+                            }}
+                          >
+                            {selectedVehicle?.vehicle_id === vehicle.vehicle_id ? 'Selected' : 'Select'}
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+                <div className="d-flex justify-content-between mt-4">
+                  <Button variant="outline-secondary" onClick={() => setCurrentStep(1)}>
+                    Back
+                  </Button>
+                  <Button 
+                    variant="primary" 
+                    onClick={() => setCurrentStep(3)}
+                    disabled={!selectedVehicle}
+                  >
+                    Next: Select Services
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-4">
+                <p>No vehicles found for this customer.</p>
+                <Button 
+                  variant="primary"
+                  onClick={() => navigate(`/admin/customer/${selectedCustomer.customer_id}/add-vehicle`)}
+                  className="mt-2"
+                >
+                  + Add New Vehicle
+                </Button>
+              </div>
+            )}
+          </Card.Body>
+        </Card>
+      )}
+
+      {currentStep === 3 && selectedCustomer && selectedVehicle && (
+        <Card className="mb-4">
+          <Card.Header className="bg-primary text-white">
+            <h5 className="mb-0"><FaClipboard className="me-2" /> Select Services</h5>
+          </Card.Header>
+          <Card.Body>
+            <ServiceSelection onSelectServices={handleSelectServices} />
+            
+            {selectedServices.length > 0 && (
+              <div className="mt-4">
+                <h6>Selected Services</h6>
+                <Table hover>
+                  <thead>
+                    <tr>
+                      <th>Service</th>
+                      <th>Assigned To</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedServices.map((service) => (
+                      <tr key={service.service_id}>
+                        <td>{service.service_name}</td>
+                        <td>
+                          <Form.Select
+                            size="sm"
+                            onChange={(e) => handleAssignEmployeeToService(service.service_id, e.target.value)}
+                            value={
+                              (() => {
+                                const assigned = serviceAssignments.find(sa => String(sa.service_id) === String(service.service_id))?.employee_id;
+                                return assigned === null || assigned === undefined || assigned === '' ? '' : String(assigned);
+                              })()
+                            }
+                          >
+                            <option value="">Assign Employee</option>
+                            {employees.map(emp => (
+                              <option key={emp.employee_id} value={String(emp.employee_id)}>
+                                {emp.employee_first_name} {emp.employee_last_name}
+                              </option>
+                            ))}
+                          </Form.Select>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              </div>
+            )}
+
+            <div className="d-flex justify-content-between mt-4">
+              <Button variant="outline-secondary" onClick={() => setCurrentStep(2)}>
+                Back
+              </Button>
+              <Button 
+                variant="primary" 
+                onClick={() => setCurrentStep(4)}
+                disabled={!allEmployeesAssigned}
+              >
+                Next: Review Order
+              </Button>
+            </div>
+          </Card.Body>
+        </Card>
+      )}
+
+      {currentStep === 4 && selectedCustomer && selectedVehicle && selectedServices.length > 0 && (
+        <Card className="mb-4">
+          <Card.Header className="bg-primary text-white">
+            <h5 className="mb-0"><FaClipboard className="me-2" /> Review Order</h5>
+          </Card.Header>
+          <Card.Body>
+            <Row>
+              <Col md={6}>
+                <Card className="mb-4">
+                  <Card.Header>Customer Information</Card.Header>
+                  <Card.Body>
+                    <p><strong>Name:</strong> {selectedCustomer.customer_first_name} {selectedCustomer.customer_last_name}</p>
+                    <p><strong>Email:</strong> {selectedCustomer.customer_email}</p>
+                    <p><strong>Phone:</strong> {selectedCustomer.customer_phone}</p>
+                  </Card.Body>
+                </Card>
+                
+                <Card>
+                  <Card.Header>Vehicle Information</Card.Header>
+                  <Card.Body>
+                    <p><strong>Make:</strong> {selectedVehicle.vehicle_make}</p>
+                    <p><strong>Model:</strong> {selectedVehicle.vehicle_model}</p>
+                    <p><strong>Year:</strong> {selectedVehicle.vehicle_year}</p>
+                    <p><strong>License Plate:</strong> {selectedVehicle.vehicle_serial}</p>
+                  </Card.Body>
+                </Card>
+              </Col>
+              
+              <Col md={6}>
+                <Card className="mb-4">
+                  <Card.Header>Order Details</Card.Header>
+                  <Card.Body>
+                    <Form.Group className="mb-3">
+                      <Form.Label><FaDollarSign className="me-2" /> Total Price</Form.Label>
+                      <Form.Control 
+                        type="number" 
+                        value={orderPrice}
+                        onChange={(e) => setOrderPrice(e.target.value)}
+                        placeholder="Enter total price"
+                      />
+                    </Form.Group>
+                    
+                    <Form.Group className="mb-3">
+                      <Form.Label><FaCalendarAlt className="me-2" /> Estimated Completion Date</Form.Label>
+                      <Form.Control 
+                        type="date" 
+                        value={estimatedCompletionDate}
+                        onChange={(e) => setEstimatedCompletionDate(e.target.value)}
+                        min={new Date().toISOString().split('T')[0]}
+                      />
+                    </Form.Group>
+                    
+                    <Form.Group>
+                      <Form.Label><FaClipboard className="me-2" /> Additional Notes</Form.Label>
+                      <Form.Control 
+                        as="textarea" 
+                        rows={3}
+                        value={additionalRequest}
+                        onChange={(e) => setAdditionalRequest(e.target.value)}
+                        placeholder="Any additional notes or requests..."
+                      />
+                    </Form.Group>
+                  </Card.Body>
+                </Card>
+                
+                <Card>
+                  <Card.Header>Selected Services</Card.Header>
+                  <Card.Body>
+                    <Table size="sm">
+                      <thead>
+                        <tr>
+                          <th>Service</th>
+                          <th>Assigned To</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedServices.map(service => {
+                          const assignment = serviceAssignments.find(sa => String(sa.service_id) === String(service.service_id));
+                          const employee = employees.find(e => String(e.employee_id) === String(assignment?.employee_id));
+                          return (
+                            <tr key={service.service_id}>
+                              <td>{service.service_name ?? `Service #${service.service_id}`}</td>
+                              <td>{employee ? `${employee.employee_first_name} ${employee.employee_last_name}` : 'Unassigned'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </Table>
+                  </Card.Body>
+                </Card>
+              </Col>
+            </Row>
+            
+            <div className="d-flex justify-content-between mt-4">
+              <Button variant="outline-secondary" onClick={() => setCurrentStep(3)}>
+                Back
+              </Button>
+              <Button 
+                variant="success" 
+                onClick={handleCreateOrder}
+                disabled={!orderPrice || !estimatedCompletionDate}
+              >
+                Create Order
+              </Button>
+            </div>
+          </Card.Body>
+        </Card>
+      )}
+      
+    </Container>
   );
 };
 

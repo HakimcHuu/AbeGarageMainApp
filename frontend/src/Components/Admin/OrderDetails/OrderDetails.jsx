@@ -1,181 +1,249 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
+import { Button, Spin, Alert, Card, Descriptions, Divider, Tag, Popconfirm, message, Select } from "antd";
+import { getAntdTagProps } from "../../util/status";
+import { ArrowLeftOutlined } from "@ant-design/icons";
 import Service from "../../services/order.service";
+import "./OrderDetails.css";
 
 const OrderDetails = () => {
   const { orderId } = useParams();
-  const [orderDetails, setOrderDetails] = useState(null);
+  const navigate = useNavigate();
+  const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
 
   useEffect(() => {
     const fetchOrderDetails = async () => {
       try {
         setLoading(true);
+        setError("");
+        console.log(`Fetching details for order ID: ${orderId}`);
+        
         const data = await Service.getOrderDetails(orderId);
-        if (data) {
-          setOrderDetails(data);
-        } else {
-          setError("No order details found.");
+        console.log('Order details received:', data);
+        
+        if (!data) {
+          throw new Error("No order data received from server");
         }
+        
+        setOrder(data);
       } catch (err) {
-        setError("Error fetching order details. Please try again.");
+        console.error('Error in fetchOrderDetails:', err);
+        setError(err.message || "Failed to load order details. Please try again later.");
       } finally {
         setLoading(false);
       }
     };
   
-    fetchOrderDetails();
+    if (orderId) {
+      fetchOrderDetails();
+    } else {
+      setError("No order ID provided");
+      setLoading(false);
+    }
   }, [orderId]);
-  
+
+  // Use centralized status meta
+
+  const handleDelete = async () => {
+    try {
+      setDeleting(true);
+      await Service.deleteOrder(orderId);
+      message.success(`Order #${orderId} deleted`);
+      navigate('/admin/orders');
+    } catch (e) {
+      message.error(e.message || 'Failed to delete order');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   if (loading) {
-    return <p>Loading order details...</p>;
+    return (
+      <div className="loading-container">
+        <Spin size="large" />
+        <p>Loading order details...</p>
+      </div>
+    );
   }
 
   if (error) {
-    return <p className="text-red-600">{error}</p>;
+    return (
+      <div className="error-container">
+        <Alert
+          message="Error Loading Order"
+          description={error}
+          type="error"
+          showIcon
+        />
+        <Button 
+          type="primary" 
+          icon={<ArrowLeftOutlined />} 
+          onClick={() => navigate('/admin/orders')}
+          style={{ marginTop: 16 }}
+        >
+          Back to Orders
+        </Button>
+      </div>
+    );
   }
 
-  console.log("Order Details in OrderDetails Component:", orderDetails);
-  if (!orderDetails) {
-    return <p>No order details found.</p>;
+  if (!order) {
+    return (
+      <div className="no-data">
+        <p>No order details found.</p>
+        <Button 
+          type="primary" 
+          icon={<ArrowLeftOutlined />} 
+          onClick={() => navigate('/admin/orders')}
+          style={{ marginTop: 16 }}
+        >
+          Back to Orders
+        </Button>
+      </div>
+    );
   }
-
-  const statusMap = {
-    1: "Received",
-    2: "In progress",
-    3: "Completed",
-  };
-
-  const orderStatusText = statusMap[orderDetails.overall_order_status] || "Unknown status";
-
-    const services = orderDetails.service_name
-    ? orderDetails.service_name.split(", ")
-    : [];
-  const serviceDescriptions = orderDetails.service_descriptions
-    ? orderDetails.service_descriptions.split("; ")
-    : [];
-  const serviceStatuses = orderDetails.service_statuses
-    ? orderDetails.service_statuses.split(", ")
-    : [];
-    const vehicleMileage = orderDetails.vehicle_mileage || "N/A";
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="flex justify-between items-center mb-4">
-        <div className="flex items-center gap-4">
-          <h2 className="page-titles text-3xl font-bold">
-            {orderDetails.customer_first_name} {orderDetails.customer_last_name}
-          </h2>
-          <div className="h-1 w-16 bg-red-500 mr-2 mt-4"></div>
-        </div>
-        <span
-          className={`text-lg font-bold px-4 py-2 rounded-full ${
-            orderDetails.overall_order_status === 3
-              ? "bg-green-500 text-white"
-              : orderDetails.overall_order_status === 2
-              ? "bg-yellow-300 text-black"
-              : "bg-gray-500 text-white"
-          }`}
+    <div className="order-details-container">
+      <div className="order-actions">
+        <Button 
+          type="text" 
+          icon={<ArrowLeftOutlined />} 
+          onClick={() => navigate('/admin/orders')}
+          className="back-button"
         >
-          {orderStatusText}
-        </span>
+          Back to Orders
+        </Button>
       </div>
 
-      <p className="text-gray-600 mb-6">
-        You can track the progress of your order using this page. We will
-        constantly update this page to let you know how we are progressing. As
-        soon as we are done with the order, the status will turn green. That
-        means your car is ready for pickup.
-      </p>
+      <Card 
+        title={`Order #${order.order_id || order.id}`}
+        extra={
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {(() => {
+              const { color, text } = getAntdTagProps(order.order_status);
+              return <Tag color={color} style={{ color: '#fff' }}>{text}</Tag>;
+            })()}
+            <Select
+              size="small"
+              value={Number(order.order_status)}
+              style={{ width: 160 }}
+              onChange={async (val) => {
+                try {
+                  setUpdatingStatus(true);
+                  const resp = await Service.updateOrderStatus(order.order_id, val);
+                  if (resp?.status !== 'success') throw new Error('Bad response');
+                  const data = await Service.getOrderDetails(order.order_id);
+                  setOrder(data);
+                  message.success('Status updated');
+                } catch (e) {
+                  message.error(e.message || 'Failed to update status');
+                } finally {
+                  setUpdatingStatus(false);
+                }
+              }}
+              options={[1,2,3,4,5,6].map(v => ({ value: v, label: getAntdTagProps(v).text }))}
+              loading={updatingStatus}
+            />
+            <Button onClick={() => navigate(`/admin/edit-order/${order.order_id}`)} type="default">Edit</Button>
+            <Popconfirm title="Delete this order?" onConfirm={handleDelete} okButtonProps={{ loading: deleting }}>
+              <Button danger>Delete</Button>
+            </Popconfirm>
+          </div>
+        }
+      >
+        <div className="order-details-grid">
+          {/* Customer Information */}
+          <div className="order-detail-card">
+            <div className="detail-card-header">
+              <h4>Customer Information</h4>
+            </div>
+            <Descriptions column={1} size="small">
+              <Descriptions.Item label="Name">
+                {order.customer_name || `${order.customer_first_name} ${order.customer_last_name}` || 'N/A'}
+              </Descriptions.Item>
+              <Descriptions.Item label="Phone">
+                {order.customer_phone || 'N/A'}
+              </Descriptions.Item>
+              <Descriptions.Item label="Email">
+                {order.customer_email || 'N/A'}
+              </Descriptions.Item>
+            </Descriptions>
+          </div>
 
-      <div className="flex flex-col md:flex-row gap-4 mx-20 service-block-one">
-        {/* Customer Info */}
-        <div className="inner-box hvr-float-shadow w-full md:w-1/2">
-          <h5 className="font-semibold">Customer</h5>
-          <p className="font-bold">
-            {orderDetails.customer_first_name} {orderDetails.customer_last_name}
-          </p>
-          <p>Email: {orderDetails.customer_email}</p>
-          <p>Phone Number: {orderDetails.customer_phone}</p>
-          <p>
-            Active Customer:{" "}
-            <span
-              className={
-                orderDetails.active_customer ? "text-green-500" : "text-red-500"
-              }
-            >
-              {orderDetails.active_customer ? "Yes" : "No"}
-            </span>
-          </p>
+          {/* Vehicle Information */}
+          <div className="order-detail-card">
+            <div className="detail-card-header">
+              <h4>Vehicle Information</h4>
+            </div>
+            <Descriptions column={1} size="small">
+              <Descriptions.Item label="Vehicle">
+                {[order.vehicle_year, order.vehicle_make, order.vehicle_model]
+                  .filter(Boolean)
+                  .join(' ') || 'N/A'}
+              </Descriptions.Item>
+              <Descriptions.Item label="VIN">
+                {order.vehicle_vin || 'N/A'}
+              </Descriptions.Item>
+              <Descriptions.Item label="License Plate">
+                {order.vehicle_license_plate || 'N/A'}
+              </Descriptions.Item>
+            </Descriptions>
+          </div>
         </div>
 
-        {/* Car in Service Info */}
-        <div className="inner-box hvr-float-shadow w-full md:w-1/2">
-          <h5 className="font-semibold">Car in Service</h5>
-          <p className="font-bold">
-            {orderDetails.vehicle_make} {orderDetails.vehicle_model}
-          </p>
-          <p>Vehicle tag: {orderDetails.vehicle_tag}</p>
-          <p>Vehicle year: {orderDetails.vehicle_year}</p>
-          <p>Vehicle mileage: {vehicleMileage}</p>
-        </div>
-      </div>
-
-      <div className="service-block-one mx-20">
-        <div className="inner-box hvr-float-shadow">
-          <h5 className="font-bold text-4xl mb-4">Requested Services</h5>
-          {services.length > 0 ? (
-            services.map((service, index) => (
-              <div
-                key={index}
-                className="flex justify-between items-center border-b-2 border-gray-200 pb-3 mb-3"
-              >
-                <div>
-                  <h6 className="font-semibold text-xl">{service}</h6>
-                  <p className="text-gray-600 text-sm">
-                    {serviceDescriptions[index]}
-                  </p>
-                </div>
-                <span
-                  className={`text-md font-semibold px-4 py-2 rounded-full ${
-                    serviceStatuses[index] === "3"
-                      ? "bg-green-500 text-white"
-                      : serviceStatuses[index] === "2"
-                      ? "bg-yellow-300 text-black"
-                      : "bg-gray-500 text-white"
-                  }`}
-                >
-                  {statusMap[serviceStatuses[index]] || "Unknown status"}
-                </span>
+        {/* Services */}
+        <Divider>Services</Divider>
+        {Array.isArray(order.services) && order.services.length > 0 ? (
+          <div className="service-list">
+            {order.services.map((svc, idx) => (
+              <div key={idx} className="service-item">
+                <div className="service-name">{svc.service_name}</div>
+                {Array.isArray(svc.assigned) && svc.assigned.length > 0 ? (
+                  <div className="service-assigned">
+                    Assigned to: {svc.assigned.map(a => `${a.employee_first_name} ${a.employee_last_name}`).join(', ')}
+                  </div>
+                ) : (
+                  <div className="service-assigned">Assigned to: Unassigned</div>
+                )}
               </div>
-            ))
-          ) : (
-            <h1 className="text-xl font-bold text-center text-gray-600 p-4 bg-gray-200 rounded-lg">
-              No services requested.
-            </h1>
-          )}
-        </div>
-      </div>
+            ))}
+          </div>
+        ) : (
+          <div>No services found for this order.</div>
+        )}
 
-      <div className="service-block-one mx-20">
-        <div className="inner-box hvr-float-shadow">
-          <h5 className="font-bold text-3xl mb-2">Order Information</h5>
-          <p className="text-blue-900">
-            Total Price:{" "}
-            <span className="text-black">${orderDetails.order_total_price}</span>
-          </p>
-          <p className="text-blue-900">
-            Estimated Completion Date:{" "}
-            <span className="text-black">
-              {new Date(
-                orderDetails.estimated_completion_date
-              ).toLocaleString()}
-            </span>
-          </p>
+        {/* Order Summary */}
+        <Divider>Order Summary</Divider>
+        <div className="order-summary">
+          <div className="summary-row">
+            <span>Subtotal:</span>
+            <span>${(order.order_subtotal || 0).toFixed(2)}</span>
+          </div>
+          <div className="summary-row">
+            <span>Tax:</span>
+            <span>${(order.order_tax || 0).toFixed(2)}</span>
+          </div>
+          <div className="summary-row total">
+            <span>Total:</span>
+            <span>${(order.order_total || 0).toFixed(2)}</span>
+          </div>
         </div>
-      </div>
+
+        {/* Order Notes */}
+        {order.notes && (
+          <>
+            <Divider>Notes</Divider>
+            <div className="order-notes">
+              <p>{order.notes}</p>
+            </div>
+          </>
+        )}
+      </Card>
     </div>
   );
 };

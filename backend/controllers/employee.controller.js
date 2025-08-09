@@ -441,11 +441,11 @@ const getEmployeeTasks = async (req, res) => {
         console.log(`[Backend Controller] Tasks fetched for employee_id ${employee_id}:`, tasks);
 
         // Send the tasks back to the frontend
-        res.status(200).json({ status: "success", data: tasks || [] });
+        res.status(200).json({ status: "success", data: Array.isArray(tasks) ? tasks : [] });
 
     } catch (error) {
-        console.error("[Backend Controller] Error fetching employee tasks:", error);
-        res.status(500).json({ status: "error", message: "Error fetching employee tasks" });
+        console.error("[Backend Controller] Error fetching employee tasks:", error?.message || error);
+        res.status(500).json({ status: "error", message: error?.message || "Error fetching employee tasks" });
     }
 };
 
@@ -468,7 +468,8 @@ const updateTaskStatus = async (req, res) => {
         }
 
         // Proceed with updating the task status
-        const result = await employeeService.updateTaskStatus(task_id, parsedStatus);
+        const changedBy = req.employee_id || null; // from verifyToken
+        const result = await employeeService.updateTaskStatus(task_id, parsedStatus, changedBy);
         console.log(`[UpdateTaskStatus Controller] Task ID: ${task_id} status updated successfully to ${parsedStatus}`);
         res.status(200).json({ message: "Task status updated successfully" });
 
