@@ -7,6 +7,7 @@ const STATUS_MAP = {
   4: { key: 'ready_for_pickup', text: 'Ready for Pick Up' },
   5: { key: 'done', text: 'Done' },
   6: { key: 'cancelled', text: 'Cancelled' },
+  7: { key: 'not_submitted', text: 'Not Submitted' },
   received: { key: 'received', text: 'Received' },
   pending: { key: 'pending', text: 'Pending' },
   in_progress: { key: 'in_progress', text: 'In Progress' },
@@ -14,6 +15,7 @@ const STATUS_MAP = {
   ready_for_pickup: { key: 'ready_for_pickup', text: 'Ready for Pick Up' },
   done: { key: 'done', text: 'Done' },
   cancelled: { key: 'cancelled', text: 'Cancelled' },
+  not_submitted: { key: 'not_submitted', text: 'Not Submitted' },
 };
 
 // Unified HEX colors across the app
@@ -25,6 +27,7 @@ const COLOR_HEX = {
   ready_for_pickup: '#3F51B5',
   done: '#009688',
   cancelled: '#F44336',
+  not_submitted: '#673AB7',
 };
 
 export function normalizeStatus(status) {

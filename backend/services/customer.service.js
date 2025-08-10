@@ -236,9 +236,18 @@ async function getOrdersByCustomerId(customerId) {
             return [];
         }
 
-        // Ensure total_amount is a number (float)
+        // Map status for customer visibility: never show 'completed' to customers.
+        // Until admin sets 'ready_for_pickup', display 'in_progress' instead of 'completed'.
+        const mapCustomerStatus = (status) => {
+            const numToKey = { 1: 'pending', 2: 'in_progress', 3: 'completed', 4: 'ready_for_pickup', 5: 'done', 6: 'cancelled' };
+            const key = typeof status === 'string' ? status : (numToKey[Number(status)] || 'pending');
+            return key === 'completed' ? 'in_progress' : key;
+        };
+
+        // Ensure total_amount is a number (float) and override order_status for customers
         const formattedOrders = rows.map(order => ({
             ...order,
+            order_status: mapCustomerStatus(order.order_status),
             total_amount: parseFloat(order.order_total_price)
         }));
 

@@ -46,7 +46,45 @@ const OrderDetails = () => {
     }
   }, [orderId]);
 
-  // Use centralized status meta
+  // Service badge rendering helper and live refresh
+  const getServiceTagProps = (svc) => {
+    const status = svc?.service_status;
+    const mapText = {
+      pending: 'Pending',
+      in_progress: 'In Progress',
+      completed: 'Completed',
+      cancelled: 'Cancelled',
+    };
+    const mapColor = {
+      pending: '#9E9E9E',
+      in_progress: '#FF9800',
+      completed: '#4CAF50',
+      cancelled: '#F44336',
+    };
+    if (status && mapText[status]) {
+      return { text: mapText[status], color: mapColor[status] };
+    }
+    // Fallback to boolean if service_status absent
+    if (typeof svc?.service_completed === 'number' || typeof svc?.service_completed === 'boolean') {
+      return svc.service_completed
+        ? { text: 'Completed', color: '#4CAF50' }
+        : { text: 'In Progress', color: '#FF9800' };
+    }
+    return { text: 'Pending', color: '#9E9E9E' };
+  };
+
+  useEffect(() => {
+    // Poll for live updates so badges reflect employee changes
+    const interval = setInterval(async () => {
+      try {
+        const data = await Service.getOrderDetails(orderId);
+        if (data) setOrder(data);
+      } catch (e) {
+        // silent failure during polling
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [orderId]);
 
   const handleDelete = async () => {
     try {
@@ -107,6 +145,9 @@ const OrderDetails = () => {
     );
   }
 
+  // Determine if all services are completed for admin transitions
+  const allServicesCompleted = Array.isArray(order?.services) && order.services.every(s => (s.service_status === 'completed') || s.service_completed === 1);
+
   return (
     <div className="order-details-container">
       <div className="order-actions">
@@ -131,12 +172,17 @@ const OrderDetails = () => {
             <Select
               size="small"
               value={Number(order.order_status)}
-              style={{ width: 160 }}
+              style={{ width: 200 }}
               onChange={async (val) => {
+                // Prevent invalid transitions client-side for immediate feedback
+                if ((val === 3 || val === 4 || val === 5) && !allServicesCompleted) {
+                  message.error('All service tasks must be completed and submitted before setting Completed, Ready for Pick Up, or Done.');
+                  return;
+                }
                 try {
                   setUpdatingStatus(true);
                   const resp = await Service.updateOrderStatus(order.order_id, val);
-                  if (resp?.status !== 'success') throw new Error('Bad response');
+                  if (resp?.status !== 'success') throw new Error(resp?.message || 'Bad response');
                   const data = await Service.getOrderDetails(order.order_id);
                   setOrder(data);
                   message.success('Status updated');
@@ -146,7 +192,7 @@ const OrderDetails = () => {
                   setUpdatingStatus(false);
                 }
               }}
-              options={[1,2,3,4,5,6].map(v => ({ value: v, label: getAntdTagProps(v).text }))}
+              options={[1,2,3,4,5,6].map(v => ({ value: v, label: getAntdTagProps(v).text, disabled: (v === 3 || v === 4 || v === 5) && !allServicesCompleted }))}
               loading={updatingStatus}
             />
             <Button onClick={() => navigate(`/admin/edit-order/${order.order_id}`)} type="default">Edit</Button>
@@ -202,7 +248,15 @@ const OrderDetails = () => {
           <div className="service-list">
             {order.services.map((svc, idx) => (
               <div key={idx} className="service-item">
-                <div className="service-name">{svc.service_name}</div>
+                <div className="service-name">
+                  {svc.service_name}
+                  <span style={{ marginLeft: 8 }}>
+                    {(() => {
+                      const { text, color } = getServiceTagProps(svc);
+                      return <Tag color={color} style={{ color: '#fff' }}>{text}</Tag>;
+                    })()}
+                  </span>
+                </div>
                 {Array.isArray(svc.assigned) && svc.assigned.length > 0 ? (
                   <div className="service-assigned">
                     Assigned to: {svc.assigned.map(a => `${a.employee_first_name} ${a.employee_last_name}`).join(', ')}

@@ -259,7 +259,10 @@ const getAllOrders = async () => {
                 oi.order_total_price,
                 oi.estimated_completion_date,
                 oi.additional_request,
-                svc.service_items
+                svc.service_items,
+                agg.checked_count AS checked_count,
+                agg.submitted_count AS submitted_count,
+                agg.total_count AS total_count
             FROM orders o
             LEFT JOIN customer_info ci ON o.customer_id = ci.customer_id
             LEFT JOIN customer c ON ci.customer_id = c.customer_id
@@ -274,6 +277,16 @@ const getAllOrders = async () => {
                 LEFT JOIN common_services cs ON os.service_id = cs.service_id
                 GROUP BY os.order_id
             ) svc ON svc.order_id = o.order_id
+            LEFT JOIN (
+                SELECT 
+                    os.order_id,
+                    SUM(CASE WHEN os.service_completed = 1 THEN 1 ELSE 0 END) AS checked_count,
+                    SUM(CASE WHEN COALESCE(os_view.status, os.service_status) = 'completed' THEN 1 ELSE 0 END) AS submitted_count,
+                    COUNT(*) AS total_count
+                FROM order_services os
+                LEFT JOIN order_status os_view ON os_view.order_service_id = os.order_service_id
+                GROUP BY os.order_id
+            ) agg ON agg.order_id = o.order_id
             ORDER BY o.order_date DESC;
         `;
 
@@ -303,10 +316,21 @@ const getAllOrders = async () => {
         done: 5,
         cancelled: 6,
       };
-      const normalizedStatus =
-        typeof row.order_status === "string"
-          ? statusMap[row.order_status] ?? 1
-          : row.order_status ?? 1;
+
+      const totalCount = Number(row.total_count || 0);
+      const submittedCount = Number(row.submitted_count || 0);
+      const currentStatus = typeof row.order_status === 'string' ? row.order_status : 'pending';
+      let computedStatus = currentStatus;
+      if (currentStatus !== 'done' && currentStatus !== 'ready_for_pickup') {
+        if (totalCount > 0 && submittedCount === totalCount) {
+          computedStatus = 'completed';
+        } else if (totalCount > 0) {
+          computedStatus = 'in_progress';
+        } else {
+          computedStatus = 'pending';
+        }
+      }
+      const normalizedStatus = statusMap[computedStatus] ?? 1;
 
       // Parse service_items into structured array
       const services = (row.service_items || "")
@@ -399,13 +423,15 @@ const getOrderById = async (orderId) => {
     }
     const row = rows[0];
 
-    // Services with assignments
+    // Services with assignments and latest status
     const svcRows = await db.query(
       `SELECT 
                 os.order_service_id,
                 os.service_id,
                 cs.service_name,
                 os.service_price,
+                COALESCE(os_view.status, os.service_status) AS service_status,
+                os.service_completed,
                 ose.employee_id,
                 ei.employee_first_name,
                 ei.employee_last_name
@@ -413,6 +439,7 @@ const getOrderById = async (orderId) => {
              LEFT JOIN common_services cs ON cs.service_id = os.service_id
              LEFT JOIN order_service_employee ose ON ose.order_service_id = os.order_service_id
              LEFT JOIN employee_info ei ON ei.employee_id = ose.employee_id
+             LEFT JOIN order_status os_view ON os_view.order_service_id = os.order_service_id
              WHERE os.order_id = ?
              ORDER BY cs.service_name ASC`,
       [orderId]
@@ -426,6 +453,8 @@ const getOrderById = async (orderId) => {
           service_id: svc.service_id,
           service_name: svc.service_name,
           service_price: parseFloat(svc.service_price || 0) || 0,
+          service_status: svc.service_status,
+          service_completed: svc.service_completed,
           assigned: [],
         });
       }
@@ -447,10 +476,21 @@ const getOrderById = async (orderId) => {
       done: 5,
       cancelled: 6,
     };
-    const normalizedStatus =
-      typeof row.order_status === "string"
-        ? statusMap[row.order_status] ?? 1
-        : row.order_status ?? 1;
+
+    // Compute overall status for admin view: Completed only when all submitted; otherwise In Progress (if any tasks exist)
+    const totalCount = services.length;
+    const submittedCount = services.filter(s => s.service_status === 'completed').length;
+    let computedStatus = typeof row.order_status === 'string' ? row.order_status : 'pending';
+    if (computedStatus !== 'done' && computedStatus !== 'ready_for_pickup') {
+      if (totalCount > 0 && submittedCount === totalCount) {
+        computedStatus = 'completed';
+      } else if (totalCount > 0) {
+        computedStatus = 'in_progress';
+      } else {
+        computedStatus = 'pending';
+      }
+    }
+    const normalizedStatus = statusMap[computedStatus] ?? 1;
 
     return {
       order_id: row.order_id,
@@ -559,13 +599,32 @@ const updateOrderStatus = async (orderId, status, changedByEmployeeId) => {
     6: "cancelled",
   };
   const statusString = statusMap[status] || "pending";
-  const query = `
-        INSERT INTO order_status_history (order_id, status, changed_by)
-        VALUES (?, ?, ?)
-    `;
-  await db.query(query, [orderId, statusString, changedByEmployeeId]);
 
-  // Also update the current status on orders table (used by list/details queries)
+  // If admin attempts to set to 'completed' or 'ready_for_pickup', enforce all services completed/submitted
+  if (statusString === 'completed' || statusString === 'ready_for_pickup' || statusString === 'done') {
+    const svcAgg = await db.query(
+      `SELECT COUNT(*) AS total, SUM(CASE WHEN COALESCE(os_view.status, os.service_status) = 'completed' THEN 1 ELSE 0 END) AS completed
+       FROM order_services os
+       LEFT JOIN order_status os_view ON os_view.order_service_id = os.order_service_id
+       WHERE os.order_id = ?`,
+      [orderId]
+    );
+    const total = Number(svcAgg?.[0]?.total || 0);
+    const completed = Number(svcAgg?.[0]?.completed || 0);
+    if (total === 0 || completed < total) {
+      // Block transition until every employee's assigned tasks are completed and submitted
+      throw new Error(
+        "Cannot update status to '" + statusString + "' until all assigned services are completed and submitted by their employees."
+      );
+    }
+  }
+
+  // Write history and update orders table
+  await db.query(
+    `INSERT INTO order_status_history (order_id, status, changed_by) VALUES (?, ?, ?)`,
+    [orderId, statusString, changedByEmployeeId]
+  );
+
   await db.query(`UPDATE orders SET order_status = ? WHERE order_id = ?`, [
     statusString,
     orderId,

@@ -14,6 +14,7 @@ function EmployeeDashboard() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [expandedOrders, setExpandedOrders] = useState({});
+  const [submitSuccess, setSubmitSuccess] = useState(false);
 
   const loadTasks = useCallback(async (empId, tok, opts = { silent: false }) => {
     try {
@@ -96,33 +97,37 @@ function EmployeeDashboard() {
 
   const isTaskChecked = (t) => Number(t.order_status) >= 2;
 
-  const handleSubmitOrder = (orderId) => {
-    // Navigate to admin orders page for review/approval
-    navigate(`/admin/orders?orderId=${orderId}`);
+  const handleSubmitOrder = async (orderId) => {
+    try {
+      setBusy(true);
+      setError("");
+      // Submit all checked tasks for this order (set to completed)
+      const items = tasksByOrder[orderId] || [];
+      for (const t of items) {
+        if (Number(t.order_status) >= 2) {
+          await employeeService.updateTaskStatus(t.order_service_id, 3, token);
+        }
+      }
+      setSubmitSuccess(true);
+      setTimeout(() => setSubmitSuccess(false), 3000);
+      await loadTasks(employee.employee_id, token);
+    } catch (err) {
+      setError(err.message || "Failed to submit order");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const toggleTask = async (orderId, task, itemsInOrder) => {
     try {
       setBusy(true);
       setError("");
-      // Change logic: checked => Completed (3), unchecked => Received (1)
-      const nextStatus = isTaskChecked(task) ? 1 : 3;
+      // Checked => mark as checked (2), Unchecked => mark as received (1)
+      const nextStatus = isTaskChecked(task) ? 1 : 2;
       await employeeService.updateTaskStatus(task.order_service_id, nextStatus, token);
-      // Predict aggregate for the order without forcing a full reload
-      const allChecked = (itemsInOrder || []).length > 0 && (itemsInOrder || []).every((t) =>
-        t.order_service_id === task.order_service_id ? (nextStatus === 3) : Number(t.order_status) === 3
-      );
-      if (allChecked) {
-        // Set order to Completed (authorized)
-        await orderService.updateOrderStatus(orderId, 3, token);
-      } else {
-        // Ensure order is at least In Progress
-        await orderService.updateOrderStatus(orderId, 2, token);
-      }
-      // Single silent refresh to sync state without blinking
       await loadTasks(employee.employee_id, token, { silent: true });
     } catch (err) {
-      setError(err.message || "Failed to update task/order status");
+      setError(err.message || "Failed to update task status");
     } finally {
       setBusy(false);
     }
@@ -142,12 +147,20 @@ function EmployeeDashboard() {
   };
 
   const prettyStatus = (statusNum) => {
-    const map = { 1: "Received", 2: "In Progress", 3: "Completed" };
-    return map[Number(statusNum)] || "Pending";
+    // Employee page: no "In Progress" badge. Show Completed when checked (2 or 3), Received when unchecked (1)
+    const normalized = Number(statusNum);
+    if (normalized >= 2) return "Completed";
+    if (normalized === 1) return "Received";
+    return "Received";
   };
 
   return (
     <section className="contact-section">
+      {submitSuccess && (
+        <div className="alert alert-success" role="alert">
+          Order submitted successfully!
+        </div>
+      )}
       <div className="auto-container">
         <div className="sec-title style-two" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <h2>Welcome, {employee?.employee_first_name || "Employee"}</h2></div>

@@ -98,6 +98,41 @@ const CustomerProfile = () => {
     fetchData();
   }, [customer_id]);
 
+  // Map status for customer-visible rules: never show 'Completed'
+  // Until admin sets 'Ready for Pick Up', display 'In Progress' instead of 'Completed'
+  const mapCustomerVisibleStatus = (status) => {
+    // Normalize to string key
+    const numToKey = {
+      1: 'pending',
+      2: 'in_progress',
+      3: 'completed',
+      4: 'ready_for_pickup',
+      5: 'done',
+      6: 'cancelled',
+    };
+    const key = typeof status === 'string' ? status : (numToKey[Number(status)] || 'pending');
+    if (key === 'completed') return 'in_progress';
+    return key;
+  };
+
+  // Poll orders periodically to reflect current status changes
+  useEffect(() => {
+    const token = localStorage.getItem("employee_token") || localStorage.getItem("customer_token");
+    if (!customer_id || !token) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await customerService.getCustomerOrders(customer_id, token);
+        if (res.ok) {
+          const ordersData = await res.json();
+          setOrders(ordersData.data || []);
+        }
+      } catch (e) {
+        // ignore polling errors
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [customer_id]);
+
   // Handler for editing a vehicle
   const handleEditVehicleClick = (vehicle) => {
     setEditingVehicle(vehicle);
@@ -644,8 +679,19 @@ const CustomerProfile = () => {
                             </td>
                             <td>
                               {(() => {
-                                const { style, text } = getBootstrapBadgeProps(order.order_status);
-                                return <Badge style={style}>{text}</Badge>;
+                                const displayStatus = mapCustomerVisibleStatus(order.order_status);
+                                const { text } = getBootstrapBadgeProps(displayStatus);
+                                const variantMap = {
+                                  received: 'info',
+                                  pending: 'secondary',
+                                  in_progress: 'warning',
+                                  completed: 'success',
+                                  ready_for_pickup: 'primary',
+                                  done: 'success',
+                                  cancelled: 'danger',
+                                };
+                                const variant = variantMap[displayStatus] || 'secondary';
+                                return <Badge bg={variant} className="text-white">{text}</Badge>;
                               })()}
                             </td>
                             <td>${order.total_amount?.toFixed(2) || '0.00'}</td>

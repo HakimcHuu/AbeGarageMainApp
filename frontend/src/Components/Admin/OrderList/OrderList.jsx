@@ -183,6 +183,8 @@ const OrderList = ({ searchText = "" }) => {
         pageSize: 10,
         total: 0,
     });
+    const [refreshInterval, setRefreshInterval] = useState(null);
+    const [isInitialLoad, setIsInitialLoad] = useState(true);
     const navigate = useNavigate();
 
     const statusMapping = {
@@ -195,18 +197,128 @@ const OrderList = ({ searchText = "" }) => {
     };
 
     useEffect(() => {
-        fetchOrders();
-    }, [pagination.current, pagination.pageSize]);
+        let isMounted = true;
+        
+        const fetchData = async () => {
+            try {
+                if (isMounted) {
+                    const response = await Service.getAllOrders();
+                    if (isMounted) {
+                        processOrdersResponse(response);
+                        setIsInitialLoad(false);
+                    }
+                }
+            } catch (err) {
+                console.error("Error in fetchData:", err);
+                if (isMounted) {
+                    setError("Error fetching orders. Please try again.");
+                    setLoading(false);
+                }
+            }
+        };
+
+        // Initial fetch
+        if (isInitialLoad) {
+            setLoading(true);
+            fetchData();
+        }
+
+        // Visibility/focus/online triggers for immediate refresh
+        const handleVisibility = () => {
+            if (document.visibilityState === 'visible') fetchData();
+        };
+        const handleFocus = () => fetchData();
+        const handleOnline = () => fetchData();
+        document.addEventListener('visibilitychange', handleVisibility);
+        window.addEventListener('focus', handleFocus);
+        window.addEventListener('online', handleOnline);
+        
+        // Set up interval for auto-refresh (every 3 seconds)
+        const interval = setInterval(() => {
+            fetchData();
+        }, 3000);
+        
+        // Save interval ID to state so we can clear it later
+        setRefreshInterval(interval);
+        
+        // Clean up
+        return () => {
+            isMounted = false;
+            if (interval) clearInterval(interval);
+            document.removeEventListener('visibilitychange', handleVisibility);
+            window.removeEventListener('focus', handleFocus);
+            window.removeEventListener('online', handleOnline);
+        };
+    }, [pagination.current, pagination.pageSize, isInitialLoad]);
+
+    const processOrdersResponse = (response) => {
+        try {
+            let ordersData = [];
+            
+            // Handle different response formats
+            if (response?.status === "success") {
+                if (Array.isArray(response?.data?.orders)) {
+                    ordersData = response.data.orders;
+                } else if (Array.isArray(response?.data)) {
+                    ordersData = response.data;
+                } else if (Array.isArray(response)) {
+                    ordersData = response;
+                }
+            } else if (Array.isArray(response)) {
+                ordersData = response;
+            } else if (response?.data && Array.isArray(response.data)) {
+                ordersData = response.data;
+            } else if (response?.orders) {
+                ordersData = response.orders;
+            }
+            
+            // Update state with new data
+            const ordersArray = Array.isArray(ordersData) ? [...ordersData].reverse() : [];
+            setOrders(ordersArray);
+            
+            // Update filtered orders for search
+            if (searchText) {
+                const filtered = filterOrders(ordersArray, searchText);
+                setFilteredOrders(filtered);
+                setPagination(prev => ({
+                    ...prev,
+                    total: filtered.length,
+                    current: 1
+                }));
+            } else {
+                setFilteredOrders(ordersArray);
+                setPagination(prev => ({
+                    ...prev,
+                    total: ordersArray.length
+                }));
+            }
+        } catch (err) {
+            console.error("Error processing orders:", err);
+            setError("Error processing orders data");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const filterOrders = (orders, searchText) => {
+        return orders.filter(order => 
+            order.customer_first_name?.toLowerCase().includes(searchText.toLowerCase()) ||
+            order.customer_last_name?.toLowerCase().includes(searchText.toLowerCase()) ||
+            order.vehicle_make?.toLowerCase().includes(searchText.toLowerCase()) ||
+            order.vehicle_model?.toLowerCase().includes(searchText.toLowerCase()) ||
+            order.order_id?.toString().includes(searchText)
+        );
+    };
+
+    useEffect(() => {
+        return () => {
+            if (refreshInterval) clearInterval(refreshInterval);
+        };
+    }, [refreshInterval]);
 
     useEffect(() => {
         if (searchText) {
-            const filtered = orders.filter(order => 
-                order.customer_first_name?.toLowerCase().includes(searchText.toLowerCase()) ||
-                order.customer_last_name?.toLowerCase().includes(searchText.toLowerCase()) ||
-                order.vehicle_make?.toLowerCase().includes(searchText.toLowerCase()) ||
-                order.vehicle_model?.toLowerCase().includes(searchText.toLowerCase()) ||
-                order.order_id?.toString().includes(searchText)
-            );
+            const filtered = filterOrders(orders, searchText);
             setFilteredOrders(filtered);
             setPagination(prev => ({
                 ...prev,
@@ -221,82 +333,6 @@ const OrderList = ({ searchText = "" }) => {
             }));
         }
     }, [searchText, orders]);
-
-    const fetchOrders = async () => {
-        try {
-            setLoading(true);
-            console.log("Fetching orders...");
-            const response = await Service.getAllOrders();
-            console.log("Orders API response:", response);
-            
-            let ordersData = [];
-            
-            // Handle different response formats
-            if (response?.status === "success") {
-                if (Array.isArray(response?.data?.orders)) {
-                    ordersData = response.data.orders;
-                    console.log("Found orders in response.data.orders:", ordersData.length);
-                } else if (Array.isArray(response?.data)) {
-                    ordersData = response.data;
-                    console.log("Found orders in response.data:", ordersData.length);
-                } else if (Array.isArray(response)) {
-                    ordersData = response;
-                    console.log("Found orders directly in response:", ordersData.length);
-                }
-            } else if (Array.isArray(response)) {
-                ordersData = response;
-                console.log("Response is an array, using directly:", ordersData.length);
-            } else if (response?.data && Array.isArray(response.data)) {
-                ordersData = response.data;
-                console.log("Found orders in response.data:", ordersData.length);
-            } else if (response?.orders) {
-                ordersData = response.orders;
-                console.log("Found orders in response.orders:", ordersData.length);
-            }
-            
-            // Log the first order for debugging
-            if (ordersData.length > 0) {
-                console.log("First order data:", ordersData[0]);
-            } else {
-                console.log("No orders found in the response");
-            }
-            
-            // Ensure we have an array before setting state
-            const ordersArray = Array.isArray(ordersData) ? [...ordersData].reverse() : [];
-            setOrders(ordersArray);
-            
-            // Update filtered orders for search
-            if (searchText) {
-                const filtered = ordersArray.filter(order => 
-                    order.customer_first_name?.toLowerCase().includes(searchText.toLowerCase()) ||
-                    order.customer_last_name?.toLowerCase().includes(searchText.toLowerCase()) ||
-                    order.vehicle_make?.toLowerCase().includes(searchText.toLowerCase()) ||
-                    order.vehicle_model?.toLowerCase().includes(searchText.toLowerCase()) ||
-                    order.order_id?.toString().includes(searchText)
-                );
-                setFilteredOrders(filtered);
-                setPagination(prev => ({
-                    ...prev,
-                    total: filtered.length,
-                    current: 1
-                }));
-            } else {
-                setFilteredOrders(ordersArray);
-                setPagination(prev => ({
-                    ...prev,
-                    total: ordersArray.length
-                }));
-            }
-            
-        } catch (err) {
-            console.error("Error fetching orders:", err);
-            setError("Error fetching orders. Please try again.");
-            setOrders([]);
-            setFilteredOrders([]);
-        } finally {
-            setLoading(false);
-        }
-    };
 
     const handleDelete = async (orderId) => {
         const confirmDelete = window.confirm(`Are you sure you want to delete order #${orderId}?`);

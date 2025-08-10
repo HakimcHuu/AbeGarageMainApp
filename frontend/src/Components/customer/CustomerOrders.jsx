@@ -4,7 +4,24 @@ import customerService from "../services/customer.service";
 import { Card, Badge, Row, Col, Table } from "react-bootstrap";
 import { getBootstrapBadgeProps } from "../util/status";
 
-const statusDisplay = (status) => getBootstrapBadgeProps(status);
+// Map status for customer-visible rules and return text + bootstrap variant
+const statusDisplay = (status) => {
+  const numToKey = { 1: 'pending', 2: 'in_progress', 3: 'completed', 4: 'ready_for_pickup', 5: 'done', 6: 'cancelled' };
+  const key = typeof status === 'string' ? status : (numToKey[Number(status)] || 'pending');
+  const mapped = key === 'completed' ? 'in_progress' : key;
+  const { text } = getBootstrapBadgeProps(mapped);
+  const variantMap = {
+    received: 'info',
+    pending: 'secondary',
+    in_progress: 'warning',
+    completed: 'success',
+    ready_for_pickup: 'primary',
+    done: 'success',
+    cancelled: 'danger',
+  };
+  const variant = variantMap[mapped] || 'secondary';
+  return { text, variant };
+};
 
 export default function CustomerOrders() {
   const { customer_id } = useParams();
@@ -100,7 +117,7 @@ export default function CustomerOrders() {
                           {order.vehicle_license_plate ? ` • ${order.vehicle_license_plate}` : ""}
                         </td>
                         <td>
-                          <Badge style={display.style}>{display.text}</Badge>
+                          <Badge bg={display.variant} className="text-white">{display.text}</Badge>
                         </td>
                         <td>${Number(order.total_amount || order.order_total_price || 0).toFixed(2)}</td>
                       </tr>

@@ -156,11 +156,12 @@ const getAllOrders = async () => {
   try {
     console.log("Sending request to:", `${api_url}/api/orders`);
     
-    const response = await fetch(`${api_url}/api/orders`, {
+    const token = localStorage.getItem('employee_token');
+    const response = await fetch(`${api_url}/api/orders?t=${Date.now()}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('employee_token')}`,
+        'x-access-token': token || '',
       },
     });
 
