@@ -649,9 +649,12 @@ const updateTaskStatus = async (order_service_id, newStatus, changedByEmployeeId
     const orderStatusRow = await conn.query(getOrderStatusQuery, [orderId]);
     const currentOrderStatus = orderStatusRow[0]?.order_status;
 
-    // Prevent changes if order is 'done'
+    // Prevent changes if order is 'done' or 'cancelled'
     if (currentOrderStatus === 'done') {
       throw new Error('Order is locked (Done). No further changes allowed.');
+    }
+    if (currentOrderStatus === 'cancelled') {
+      throw new Error('Order is cancelled. No further changes allowed.');
     }
 
     // 1. Update `service_completed` in `order_services`
@@ -691,8 +694,8 @@ const updateTaskStatus = async (order_service_id, newStatus, changedByEmployeeId
     const checked = Number(agg?.[0]?.checked || 0);
 
     let newOrderStatus = currentOrderStatus;
-    // If order is not locked as 'done', recompute status.
-    if (currentOrderStatus !== 'done') {
+    // If order is not locked as 'done' or 'cancelled', recompute status.
+    if (currentOrderStatus !== 'done' && currentOrderStatus !== 'cancelled') {
       if (newStatus === 1) {
         // Employee unchecked a task: if no tasks are checked/submitted after this action, mark overall as 'pending' (Received);
         // otherwise, it's still 'in_progress'.

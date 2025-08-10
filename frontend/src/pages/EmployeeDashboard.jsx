@@ -72,6 +72,14 @@ function EmployeeDashboard() {
     try {
       setBusy(true);
       setError("");
+      
+      // Find the task to check if its order is cancelled
+      const task = tasks.find(t => t.order_service_id === taskId);
+      if (task && Number(task.overall_order_status) === 6) {
+        setError("Cannot update task: Order is cancelled. Please contact admin to change the order status.");
+        return;
+      }
+      
       await employeeService.updateTaskStatus(taskId, status, token);
       // Reload tasks after status change
       await loadTasks(employee.employee_id, token);
@@ -108,6 +116,10 @@ function EmployeeDashboard() {
         window.alert("Order is Done and cannot be submitted.");
         return;
       }
+      if (orderOverall === 6) {
+        window.alert("Order is Cancelled and cannot be submitted. Please contact admin to change the order status.");
+        return;
+      }
       // Submit all checked tasks for this order (set to completed)
       for (const t of items) {
         if (Number(t.order_status) >= 2) {
@@ -125,9 +137,14 @@ function EmployeeDashboard() {
   };
 
   const toggleTask = async (orderId, task, itemsInOrder) => {
-    // Prevent modifying tasks when the entire order is Done
-    if (Number(itemsInOrder?.[0]?.overall_order_status || 1) === 5) {
+    // Prevent modifying tasks when the entire order is Done or Cancelled
+    const overallStatus = Number(itemsInOrder?.[0]?.overall_order_status || 1);
+    if (overallStatus === 5) {
       window.alert("Order is Done and tasks cannot be modified.");
+      return;
+    }
+    if (overallStatus === 6) {
+      window.alert("Order is Cancelled and tasks cannot be modified. Please contact admin to change the order status.");
       return;
     }
     try {
@@ -208,7 +225,7 @@ function EmployeeDashboard() {
                             </span>
                           </div>
                           <div style={{ display: 'flex', gap: 8 }}>
-                            {allChecked && orderOverall !== 5 && (
+                            {allChecked && orderOverall !== 5 && orderOverall !== 6 && (
                               <button
                                 className="theme-btn btn-style-one"
                                 onClick={() => handleSubmitOrder(orderId)}
@@ -249,7 +266,7 @@ function EmployeeDashboard() {
                                     type="checkbox"
                                     checked={isTaskChecked(t)}
                                     onChange={() => toggleTask(orderId, t, items)}
-                                    disabled={busy}
+                                    disabled={busy || orderOverall === 6}
                                     style={{ width: '18px', height: '18px' }}
                                   />
                                   <div>

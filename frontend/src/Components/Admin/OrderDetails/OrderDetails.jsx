@@ -141,6 +141,7 @@ const OrderDetails = () => {
   const isReceived = currentStatus === 1;
   const isCompleted = currentStatus === 3;
   const isDone = currentStatus === 5;
+  const isCancelled = currentStatus === 6;
 
   return (
     <div className="order-details-container">
@@ -169,8 +170,16 @@ const OrderDetails = () => {
               style={{ width: 200 }}
               onChange={async (val) => {
                 // Prevent invalid transitions client-side for immediate feedback
+                if (isCancelled && val !== 1) {
+                  message.error('From Cancelled, only Received is allowed.');
+                  return;
+                }
                 if (isReceived && val !== 6) {
                   message.error('Only Cancel is allowed when order is Received.');
+                  return;
+                }
+                if (Number(order.order_status) === 2 && val !== 6) {
+                  message.error("When order is In Progress, only 'Cancel' is allowed.");
                   return;
                 }
                 if (isDone && val !== 6) {
@@ -201,17 +210,23 @@ const OrderDetails = () => {
               options={[1,2,3,4,5,6].map(v => ({ 
                 value: v, 
                 label: getAntdTagProps(v).text, 
-                disabled: isReceived
-                  ? v !== 6
-                  : isDone 
-                    ? v !== 6 
-                    : isCompleted 
-                      ? ![4, 5, 6].includes(v) 
-                      : ((v === 3 || v === 4 || v === 5) && !allServicesCompleted) 
+                disabled: isCancelled
+                  ? v !== 1 // From Cancelled, only Received (1) is allowed
+                  : isReceived
+                    ? v !== 6
+                    : isDone 
+                      ? v !== 6 
+                      : Number(order.order_status) === 2
+                        ? v !== 6 // In Progress: only Cancel allowed
+                        : isCompleted 
+                          ? ![4, 5, 6].includes(v) 
+                          : ((v === 3 || v === 4 || v === 5) && !allServicesCompleted) 
               }))}
               loading={updatingStatus}
             />
-            <Button onClick={() => navigate(`/admin/edit-order/${order.order_id}`)} type="default">Edit</Button>
+            <Button onClick={() => navigate(`/admin/edit-order/${order.order_id}`)} type="default" disabled={isCancelled || isDone}>
+              Edit
+            </Button>
             <Popconfirm title="Delete this order?" onConfirm={handleDelete} okButtonProps={{ loading: deleting }}>
               <Button danger>Delete</Button>
             </Popconfirm>

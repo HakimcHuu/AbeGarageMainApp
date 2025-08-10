@@ -175,6 +175,17 @@ const updateOrder = async (req, res) => {
 
     console.log("Updating order with id:", id, updateData);
 
+    // Pre-flight: block updates if order is cancelled or done
+    try {
+      const row = await db.query(`SELECT order_status FROM orders WHERE order_id = ?`, [id]);
+      const status = row?.[0]?.order_status || 'pending';
+      if (status === 'cancelled' || status === 'done') {
+        return res.status(400).json({ status: 'error', message: `Order is ${status}. Change status to 'Received' before editing.` });
+      }
+    } catch (preErr) {
+      return res.status(500).json({ status: 'error', message: 'Unable to verify order status. Try again later.' });
+    }
+
     // Call service to update order_info
     const updatedOrder = await orderService.updateOrder(id, updateData);
 
@@ -183,7 +194,11 @@ const updateOrder = async (req, res) => {
     // Update the order services if necessary
     if (Array.isArray(updateData.order_services)) {
       console.log("Updating services for order id:", id);
-      await orderService.updateOrderServices(id, updateData.order_services);
+      try {
+        await orderService.updateOrderServices(id, updateData.order_services);
+      } catch (svcErr) {
+        return res.status(400).json({ status: 'error', message: svcErr.message || 'Failed to update services' });
+      }
     }
 
     res.status(200).json({ status: 'success', message: 'Order updated successfully' });

@@ -226,7 +226,7 @@ const getAllOrders = async () => {
 const getOrderDetails = async (orderId) => { 
   try {
     console.log(`Fetching order details for order ID: ${orderId}`);
-    const response = await fetch(`${api_url}/api/order/${orderId}`, {
+    const response = await fetch(`${api_url}/api/order/${orderId}?t=${Date.now()}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',

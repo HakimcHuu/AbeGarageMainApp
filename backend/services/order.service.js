@@ -306,7 +306,7 @@ const getAllOrders = async () => {
       JSON.stringify(rows.slice(0, 3), null, 2)
     );
 
-    // Format the response
+    // Format the response (use stored order_status as source of truth)
     const formattedOrders = rows.map((row) => {
       // Map order_status strings to numeric codes expected by frontend
       const statusMap = {
@@ -318,22 +318,8 @@ const getAllOrders = async () => {
         cancelled: 6,
       };
 
-      const totalCount = Number(row.total_count || 0);
-      const submittedCount = Number(row.submitted_count || 0);
-      const checkedCount = Number(row.checked_count || 0);
-      const currentStatus =
-        typeof row.order_status === "string" ? row.order_status : "pending";
-      let computedStatus = currentStatus;
-      if (currentStatus !== "done" && currentStatus !== "ready_for_pickup") {
-        if (totalCount > 0 && submittedCount === totalCount) {
-          computedStatus = "completed";
-        } else if (checkedCount > 0 || submittedCount > 0) {
-          computedStatus = "in_progress";
-        } else {
-          computedStatus = "pending";
-        }
-      }
-      const normalizedStatus = statusMap[computedStatus] ?? 1;
+      const currentStatus = typeof row.order_status === "string" ? row.order_status : "pending";
+      const normalizedStatus = statusMap[currentStatus] ?? 1;
 
       // Parse service_items into structured array
       const services = (row.service_items || "")
@@ -482,27 +468,9 @@ const getOrderById = async (orderId) => {
       done: 5,
       cancelled: 6,
     };
-
-    // Compute overall status for admin view: Completed only when all submitted; otherwise In Progress (if any tasks exist)
-    const totalCount = services.length;
-    const submittedCount = services.filter(
-      (s) => s.service_status === "completed"
-    ).length;
-    const checkedCount = services.filter(
-      (s) => s.service_completed === 1
-    ).length;
-    let computedStatus =
-      typeof row.order_status === "string" ? row.order_status : "pending";
-    if (computedStatus !== "done" && computedStatus !== "ready_for_pickup") {
-      if (totalCount > 0 && submittedCount === totalCount) {
-        computedStatus = "completed";
-      } else if (checkedCount > 0 || submittedCount > 0) {
-        computedStatus = "in_progress";
-      } else {
-        computedStatus = "pending";
-      }
-    }
-    const normalizedStatus = statusMap[computedStatus] ?? 1;
+    // Use stored order status as source of truth; do not recompute here
+    const currentStatus = typeof row.order_status === "string" ? row.order_status : "pending";
+    const normalizedStatus = statusMap[currentStatus] ?? 1;
 
     return {
       order_id: row.order_id,
@@ -577,6 +545,25 @@ async function updateOrder(id, updateData) {
     order_total_price,
   });
 
+  // Guard: prevent updates to order_info for cancelled/done orders
+  try {
+    const statusRow = await db.query(
+      `SELECT order_status FROM orders WHERE order_id = ?`,
+      [id]
+    );
+    const status = statusRow?.[0]?.order_status || 'pending';
+    if (status === 'cancelled' || status === 'done') {
+      throw new Error(
+        `Order is ${status}. Change status to 'Received' before editing.`
+      );
+    }
+  } catch (statusErr) {
+    if (statusErr.message?.startsWith('Order is')) {
+      throw statusErr;
+    }
+    throw new Error('Unable to verify order status. Cannot update order now.');
+  }
+
   const query = `
         UPDATE order_info
         SET 
@@ -626,6 +613,11 @@ const updateOrderStatus = async (orderId, status, changedByEmployeeId) => {
     );
   }
 
+  // When order is In Progress, only allow transition to Cancelled
+  if (currentStatus === 'in_progress' && statusString !== 'cancelled') {
+    throw new Error("When order is In Progress, only 'Cancel' is allowed.");
+  }
+
   // If admin attempts to set to 'completed' or 'ready_for_pickup', enforce all services completed/submitted
   if (
     statusString === "completed" ||
@@ -671,6 +663,30 @@ async function updateOrderServices(order_id, services) {
     "with services:",
     services
   );
+
+  // Hard guard: block any service modifications when order is cancelled or done
+  try {
+    const statusRow = await db.query(
+      `SELECT order_status FROM orders WHERE order_id = ?`,
+      [order_id]
+    );
+    const currentOrderStatusGuard = statusRow?.[0]?.order_status || 'pending';
+    if (currentOrderStatusGuard === 'cancelled' || currentOrderStatusGuard === 'done') {
+      console.log(
+        `Order ${order_id} is ${currentOrderStatusGuard}. Blocking service modifications until status changes.`
+      );
+      throw new Error(
+        `Order is ${currentOrderStatusGuard}. Change status to 'Received' before editing services.`
+      );
+    }
+  } catch (guardErr) {
+    if (guardErr.message?.startsWith('Order is')) {
+      // Re-throw for controller to surface as 400
+      throw guardErr;
+    }
+    // If guard query fails for any reason, fail safe and block
+    throw new Error('Unable to verify order status. Cannot modify services at this time.');
+  }
 
   // Helper to coerce nested/id shapes to number
   const coerceId = (val) => {
@@ -796,44 +812,56 @@ async function updateOrderServices(order_id, services) {
       }
     }
 
-    // Recalculate overall order status based on final state
-    const finalStatusQuery = `
-      SELECT COUNT(*) AS total,
-             SUM(CASE WHEN os.service_completed = 1 THEN 1 ELSE 0 END) AS checked,
-             SUM(CASE WHEN COALESCE(os_view.status, os.service_status) = 'completed' THEN 1 ELSE 0 END) AS completed
-      FROM order_services os
-      LEFT JOIN order_status os_view ON os_view.order_service_id = os.order_service_id
-      WHERE os.order_id = ?
-    `;
+    // Check current order status before recalculating
+    const currentOrderStatusQuery = `SELECT order_status FROM orders WHERE order_id = ?`;
+    const currentOrderStatusResult = await db.query(currentOrderStatusQuery, [order_id]);
+    const currentOrderStatus = currentOrderStatusResult[0]?.order_status || 'pending';
     
-    const statusResult = await db.query(finalStatusQuery, [order_id]);
-    const total = Number(statusResult[0]?.total || 0);
-    const checked = Number(statusResult[0]?.checked || 0);
-    const completed = Number(statusResult[0]?.completed || 0);
-    
-    console.log(`Final status calculation for order ${order_id}: total=${total}, checked=${checked}, completed=${completed}`);
-    
-    let newOrderStatus = 'pending';
-    if (total > 0) {
-      if (completed === total) {
-        newOrderStatus = 'completed';
-      } else if (checked > 0 || completed > 0) {
-        newOrderStatus = 'in_progress';
-      } else {
-        newOrderStatus = 'pending';
+    // If order is cancelled, don't recalculate status - preserve the cancelled state
+    if (currentOrderStatus === 'cancelled') {
+      console.log(`Order ${order_id} is cancelled - preserving cancelled status`);
+    } else {
+      // Recalculate overall order status based on final state
+      const finalStatusQuery = `
+        SELECT COUNT(*) AS total,
+               SUM(CASE WHEN os.service_completed = 1 THEN 1 ELSE 0 END) AS checked,
+               SUM(CASE WHEN COALESCE(os_view.status, os.service_status) = 'completed' THEN 1 ELSE 0 END) AS completed
+        FROM order_services os
+        LEFT JOIN order_status os_view ON os_view.order_service_id = os.order_service_id
+        WHERE os.order_id = ?
+      `;
+      
+      const statusResult = await db.query(finalStatusQuery, [order_id]);
+      const total = Number(statusResult[0]?.total || 0);
+      const checked = Number(statusResult[0]?.checked || 0);
+      const completed = Number(statusResult[0]?.completed || 0);
+      
+      console.log(`Final status calculation for order ${order_id}: total=${total}, checked=${checked}, completed=${completed}`);
+      
+      let newOrderStatus = 'pending';
+      if (total > 0) {
+        if (completed === total) {
+          newOrderStatus = 'completed';
+        } else if (checked > 0 || completed > 0) {
+          newOrderStatus = 'in_progress';
+        } else {
+          newOrderStatus = 'pending';
+        }
+      }
+      
+      // Update overall order status only if it's not cancelled
+      if (newOrderStatus !== currentOrderStatus) {
+        await db.query(`UPDATE orders SET order_status = ? WHERE order_id = ?`, [newOrderStatus, order_id]);
+        
+        // Add status history entry for the overall order status change
+        await db.query(
+          `INSERT INTO order_status_history (order_id, status, changed_by) VALUES (?, ?, ?)`,
+          [order_id, newOrderStatus, 1] // Using employee_id 1 as default for system changes
+        );
+        
+        console.log(`Order ${order_id} overall status set to: ${newOrderStatus}`);
       }
     }
-    
-    // Update overall order status
-    await db.query(`UPDATE orders SET order_status = ? WHERE order_id = ?`, [newOrderStatus, order_id]);
-    
-    // Add status history entry for the overall order status change
-    await db.query(
-      `INSERT INTO order_status_history (order_id, status, changed_by) VALUES (?, ?, ?)`,
-      [order_id, newOrderStatus, 1] // Using employee_id 1 as default for system changes
-    );
-    
-    console.log(`Order ${order_id} overall status set to: ${newOrderStatus}`);
 
     console.log(
       "Order services updated successfully for order ID:",

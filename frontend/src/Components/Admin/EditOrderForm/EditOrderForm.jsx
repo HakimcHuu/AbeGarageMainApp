@@ -33,6 +33,7 @@ const EditOrderForm = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [initialData, setInitialData] = useState(null);
   const [hasChanges, setHasChanges] = useState(false);
+  const [currentStatus, setCurrentStatus] = useState(1);
 
   // Function to check if data has changed
   const checkForChanges = (currentData, originalData) => {
@@ -102,6 +103,7 @@ const EditOrderForm = () => {
         })
       };
       setInitialData(initial);
+      if (typeof data.order_status === 'number') setCurrentStatus(Number(data.order_status));
 
       setSelectedCustomer({
         customer_id: data.customer_id,
@@ -316,6 +318,11 @@ const EditOrderForm = () => {
           <ArrowLeftOutlined /> Back to Orders
         </button>
         <h1 className="page-title">Edit Order #{orderData?.order_id || routeOrderId}</h1>
+        {(currentStatus === 6 || currentStatus === 5) && (
+          <div className="no-changes-alert" style={{ background: '#fee2e2', color: '#991b1b', borderColor: '#ef4444' }}>
+            <ExclamationCircleOutlined /> This order is {currentStatus === 6 ? 'Cancelled' : 'Done'}. Change status to Received before editing.
+          </div>
+        )}
         {!hasChanges && (
           <div className="no-changes-alert">
             <ExclamationCircleOutlined /> No changes detected
@@ -421,6 +428,7 @@ const EditOrderForm = () => {
                       value={serviceAssignments.find(a => a.service_id === service.service_id)?.employee_id || ''}
                       onChange={(e) => handleAssignEmployeeToService(service.service_id, e.target.value)}
                       className="assign-select"
+                      disabled={currentStatus === 6 || currentStatus === 5}
                     >
                       <option value="">Unassigned</option>
                       {employees.map(emp => (
@@ -445,31 +453,34 @@ const EditOrderForm = () => {
         <div className="form-grid">
           <div className="form-item">
             <label>Total Price ($)</label>
-            <input
+              <input
               type="number"
               value={orderPrice}
               onChange={(e) => setOrderPrice(e.target.value)}
               placeholder="Enter total price"
               min="0"
               step="0.01"
+                disabled={currentStatus === 6 || currentStatus === 5}
             />
           </div>
           <div className="form-item">
             <label>Estimated Completion</label>
-            <input
+              <input
               type="date"
               value={estimatedCompletionDate}
               onChange={(e) => setEstimatedCompletionDate(e.target.value)}
+                disabled={currentStatus === 6 || currentStatus === 5}
             />
           </div>
         </div>
         <div className="form-item">
           <label>Additional Requests</label>
-          <textarea
+              <textarea
             value={additionalRequest}
             onChange={(e) => setAdditionalRequest(e.target.value)}
             placeholder="Any special instructions or notes..."
             rows={4}
+                disabled={currentStatus === 6 || currentStatus === 5}
           />
         </div>
       </div>
@@ -486,7 +497,7 @@ const EditOrderForm = () => {
         <button 
           className="btn btn-primary" 
           onClick={handleUpdateOrder}
-          disabled={isLoading || !hasChanges}
+          disabled={isLoading || !hasChanges || currentStatus === 6 || currentStatus === 5}
         >
           <SaveOutlined /> {isLoading ? 'Saving...' : 'Save Changes'}
         </button>
