@@ -49,28 +49,18 @@ const OrderDetails = () => {
   // Service badge rendering helper and live refresh
   const getServiceTagProps = (svc) => {
     const status = svc?.service_status;
-    const mapText = {
-      pending: 'Pending',
-      in_progress: 'In Progress',
-      completed: 'Completed',
-      cancelled: 'Cancelled',
-    };
-    const mapColor = {
-      pending: '#9E9E9E',
-      in_progress: '#FF9800',
-      completed: '#4CAF50',
-      cancelled: '#F44336',
-    };
-    if (status && mapText[status]) {
-      return { text: mapText[status], color: mapColor[status] };
+    if (status) {
+      const { text, color } = getAntdTagProps(status);
+      return { text, color };
     }
     // Fallback to boolean if service_status absent
     if (typeof svc?.service_completed === 'number' || typeof svc?.service_completed === 'boolean') {
-      return svc.service_completed
-        ? { text: 'Completed', color: '#4CAF50' }
-        : { text: 'In Progress', color: '#FF9800' };
+      const mapped = svc.service_completed ? 'completed' : 'in_progress';
+      const { text, color } = getAntdTagProps(mapped);
+      return { text, color };
     }
-    return { text: 'Pending', color: '#9E9E9E' };
+    const { text, color } = getAntdTagProps('pending');
+    return { text, color };
   };
 
   useEffect(() => {
@@ -148,6 +138,7 @@ const OrderDetails = () => {
   // Determine if all services are completed for admin transitions
   const allServicesCompleted = Array.isArray(order?.services) && order.services.every(s => (s.service_status === 'completed') || s.service_completed === 1);
   const currentStatus = Number(order?.order_status);
+  const isReceived = currentStatus === 1;
   const isCompleted = currentStatus === 3;
   const isDone = currentStatus === 5;
 
@@ -178,6 +169,10 @@ const OrderDetails = () => {
               style={{ width: 200 }}
               onChange={async (val) => {
                 // Prevent invalid transitions client-side for immediate feedback
+                if (isReceived && val !== 6) {
+                  message.error('Only Cancel is allowed when order is Received.');
+                  return;
+                }
                 if (isDone && val !== 6) {
                   message.error('Only Cancel is allowed when order is Done.');
                   return;
@@ -206,11 +201,13 @@ const OrderDetails = () => {
               options={[1,2,3,4,5,6].map(v => ({ 
                 value: v, 
                 label: getAntdTagProps(v).text, 
-                disabled: isDone 
-                  ? v !== 6 
-                  : isCompleted 
-                    ? ![4, 5, 6].includes(v) 
-                    : ((v === 3 || v === 4 || v === 5) && !allServicesCompleted) 
+                disabled: isReceived
+                  ? v !== 6
+                  : isDone 
+                    ? v !== 6 
+                    : isCompleted 
+                      ? ![4, 5, 6].includes(v) 
+                      : ((v === 3 || v === 4 || v === 5) && !allServicesCompleted) 
               }))}
               loading={updatingStatus}
             />

@@ -4,6 +4,7 @@ import employeeService from "../Components/services/employee.service";
 import orderService from "../Components/services/order.service";
 import getAuth from "../Components/util/auth";
 import { loginService } from "../Components/services/login.service";
+import { getBootstrapBadgeProps, getStatusDisplay } from "../Components/util/status";
 
 function EmployeeDashboard() {
   const navigate = useNavigate();
@@ -156,21 +157,9 @@ function EmployeeDashboard() {
     }
   };
 
-  const prettyStatus = (statusNum) => {
-    const s = Number(statusNum);
-    if (s === 3) return "Completed";
-    if (s === 2) return "In Progress";
-    return "Received";
-  };
+  const prettyStatus = (statusNum) => getStatusDisplay(statusNum).text;
 
-  const prettyOrderStatus = (statusNum) => {
-    const s = Number(statusNum);
-    if (s === 5) return "Done";
-    if (s === 4) return "Ready for Pick Up";
-    if (s === 3) return "Completed";
-    if (s === 2) return "In Progress";
-    return "Pending";
-  };
+  const prettyOrderStatus = (statusNum) => getStatusDisplay(statusNum).text;
 
   return (
     <section className="contact-section">
@@ -206,14 +195,15 @@ function EmployeeDashboard() {
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
                             <span>Order #{orderId} • {allChecked ? 'All tasks checked' : 'Tasks pending'}</span>
-                            <span style={{
-                              padding: '2px 8px',
-                              borderRadius: '12px',
-                              backgroundColor: orderOverall === 5 ? '#d4edda' : orderOverall === 4 ? '#cce5ff' : orderOverall === 3 ? '#e2e3e5' : orderOverall === 2 ? '#fff3cd' : '#f8d7da',
-                              color: orderOverall === 5 ? '#155724' : orderOverall === 4 ? '#004085' : orderOverall === 3 ? '#383d41' : orderOverall === 2 ? '#856404' : '#721c24',
-                              fontSize: '0.8em',
-                              fontWeight: 600
-                            }}>
+                            <span
+                              style={{
+                                ...getBootstrapBadgeProps(orderOverall).style,
+                                padding: '2px 8px',
+                                borderRadius: '12px',
+                                fontSize: '0.8em',
+                                fontWeight: 600
+                              }}
+                            >
                               {prettyOrderStatus(orderOverall)}
                             </span>
                           </div>
@@ -267,15 +257,16 @@ function EmployeeDashboard() {
                                     <div style={{ fontSize: '0.9em', color: '#666' }}>{t.service_description}</div>
                                   </div>
                                 </div>
-                                <div style={{ 
-                                  padding: '4px 8px', 
-                                  borderRadius: '4px', 
-                                  backgroundColor: t.order_status === 3 ? '#d4edda' : t.order_status === 2 ? '#fff3cd' : '#f8d7da',
-                                  color: t.order_status === 3 ? '#155724' : t.order_status === 2 ? '#856404' : '#721c24',
-                                  fontWeight: 500,
-                                  fontSize: '0.85em'
-                                }}>
-                                  {prettyStatus(t.order_status)}
+                                <div
+                                  style={{
+                                    ...getBootstrapBadgeProps(t.order_status).style,
+                                    padding: '4px 8px',
+                                    borderRadius: '4px',
+                                    fontWeight: 500,
+                                    fontSize: '0.85em'
+                                  }}
+                                >
+                                  {getStatusDisplay(t.order_status).text}
                                 </div>
                               </div>
                             ))}

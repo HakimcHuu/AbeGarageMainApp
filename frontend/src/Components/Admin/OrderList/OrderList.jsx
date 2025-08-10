@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState, useRef } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Table, Tag, Button, Input, Space, Badge, Dropdown, Menu, Modal, Descriptions, Divider, Timeline, Progress } from "antd";
 import { getAntdTagProps } from "../../util/status";
 import { 
@@ -183,9 +183,9 @@ const OrderList = ({ searchText = "" }) => {
         pageSize: 10,
         total: 0,
     });
-    const [refreshInterval, setRefreshInterval] = useState(null);
-    const [isInitialLoad, setIsInitialLoad] = useState(true);
+    const intervalRef = useRef(null);
     const navigate = useNavigate();
+    const location = useLocation();
 
     const statusMapping = {
         1: { text: 'Received' },
@@ -198,15 +198,13 @@ const OrderList = ({ searchText = "" }) => {
 
     useEffect(() => {
         let isMounted = true;
-        
+
         const fetchData = async () => {
             try {
+                if (!isMounted) return;
+                const response = await Service.getAllOrders();
                 if (isMounted) {
-                    const response = await Service.getAllOrders();
-                    if (isMounted) {
-                        processOrdersResponse(response);
-                        setIsInitialLoad(false);
-                    }
+                    processOrdersResponse(response);
                 }
             } catch (err) {
                 console.error("Error in fetchData:", err);
@@ -218,10 +216,8 @@ const OrderList = ({ searchText = "" }) => {
         };
 
         // Initial fetch
-        if (isInitialLoad) {
-            setLoading(true);
-            fetchData();
-        }
+        setLoading(true);
+        fetchData();
 
         // Visibility/focus/online triggers for immediate refresh
         const handleVisibility = () => {
@@ -232,24 +228,21 @@ const OrderList = ({ searchText = "" }) => {
         document.addEventListener('visibilitychange', handleVisibility);
         window.addEventListener('focus', handleFocus);
         window.addEventListener('online', handleOnline);
-        
+
         // Set up interval for auto-refresh (every 3 seconds)
-        const interval = setInterval(() => {
+        intervalRef.current = setInterval(() => {
             fetchData();
         }, 3000);
-        
-        // Save interval ID to state so we can clear it later
-        setRefreshInterval(interval);
-        
+
         // Clean up
         return () => {
             isMounted = false;
-            if (interval) clearInterval(interval);
+            if (intervalRef.current) clearInterval(intervalRef.current);
             document.removeEventListener('visibilitychange', handleVisibility);
             window.removeEventListener('focus', handleFocus);
             window.removeEventListener('online', handleOnline);
         };
-    }, [pagination.current, pagination.pageSize, isInitialLoad]);
+    }, []);
 
     const processOrdersResponse = (response) => {
         try {
@@ -273,7 +266,7 @@ const OrderList = ({ searchText = "" }) => {
             }
             
             // Update state with new data
-            const ordersArray = Array.isArray(ordersData) ? [...ordersData].reverse() : [];
+            const ordersArray = Array.isArray(ordersData) ? [...ordersData] : [];
             setOrders(ordersArray);
             
             // Update filtered orders for search
@@ -299,7 +292,45 @@ const OrderList = ({ searchText = "" }) => {
             setLoading(false);
         }
     };
-
+    
+    // Refetch on navigation back/forward (location key changes)
+    useEffect(() => {
+    let cancelled = false;
+    (async () => {
+    try {
+    setLoading(true);
+    const response = await Service.getAllOrders();
+    if (!cancelled) processOrdersResponse(response);
+    } catch (err) {
+    if (!cancelled) {
+    setError("Error fetching orders. Please try again.");
+    setLoading(false);
+    }
+    }
+    })();
+    return () => { cancelled = true; };
+    }, [location.key]);
+    
+    // Handle BFCache restore: pageshow fires when navigating back without full remount
+    useEffect(() => {
+    const onPageShow = (e) => {
+    if (e.persisted || document.visibilityState === 'visible') {
+    (async () => {
+    try {
+    setLoading(true);
+    const response = await Service.getAllOrders();
+    processOrdersResponse(response);
+    } catch (err) {
+    setError("Error fetching orders. Please try again.");
+    setLoading(false);
+    }
+    })();
+    }
+    };
+    window.addEventListener('pageshow', onPageShow);
+    return () => window.removeEventListener('pageshow', onPageShow);
+    }, []);
+    
     const filterOrders = (orders, searchText) => {
         return orders.filter(order => 
             order.customer_first_name?.toLowerCase().includes(searchText.toLowerCase()) ||
@@ -310,12 +341,7 @@ const OrderList = ({ searchText = "" }) => {
         );
     };
 
-    useEffect(() => {
-        return () => {
-            if (refreshInterval) clearInterval(refreshInterval);
-        };
-    }, [refreshInterval]);
-
+    
     useEffect(() => {
         if (searchText) {
             const filtered = filterOrders(orders, searchText);

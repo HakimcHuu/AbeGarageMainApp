@@ -271,6 +271,15 @@ async function updateCustomer(customer_id, customerData) {
         .catch((err) => console.log("Error in updating customer email:", err));
     }
 
+    // Update active_customer flag if provided
+    if (customerData.active_customer !== undefined && customerData.active_customer !== null) {
+      const activeVal = Number(customerData.active_customer) ? 1 : 0;
+      const queryActive = "UPDATE customer SET active_customer = ? WHERE customer_id = ?";
+      await conn
+        .query(queryActive, [activeVal, customer_id])
+        .catch((err) => console.log("Error in updating active_customer:", err));
+    }
+
     const query2 =
       "UPDATE customer_info SET customer_first_name = ?, customer_last_name = ?, customer_phone = ? WHERE customer_id = ?";
     await conn

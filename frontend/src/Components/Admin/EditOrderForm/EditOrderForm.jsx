@@ -20,6 +20,7 @@ const EditOrderForm = () => {
   const navigate = useNavigate();
 
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const normalizeActiveFlag = (val) => val === true || val === 1 || val === '1' || String(val).toLowerCase() === 'true';
   const [selectedVehicle, setSelectedVehicle] = useState(null);
   const [selectedServices, setSelectedServices] = useState([]);
   const [serviceAssignments, setServiceAssignments] = useState([]);
@@ -45,11 +46,12 @@ const EditOrderForm = () => {
       setInitialData(initial);
 
       setSelectedCustomer({
+        customer_id: data.customer_id,
         customer_first_name: data.customer_first_name,
         customer_last_name: data.customer_last_name,
         customer_email: data.customer_email,
         customer_phone: data.customer_phone,
-        active_customer: data.active_customer,
+        active_customer: data.active_customer !== undefined ? normalizeActiveFlag(data.active_customer) : undefined,
       });
 
       setSelectedVehicle({
@@ -59,7 +61,7 @@ const EditOrderForm = () => {
         vehicle_type: data.vehicle_type,
         vehicle_mileage: data.vehicle_mileage,
         vehicle_tag: data.vehicle_tag,
-        vehicle_serial: data.vehicle_serial,
+        vehicle_license_plate: data.vehicle_license_plate,
       });
 
       setAdditionalRequest(data.additional_request || "");
@@ -286,7 +288,7 @@ const EditOrderForm = () => {
           </div>
           <div className="vehicle-detail">
             <strong>License Plate</strong>
-            {selectedVehicle?.vehicle_serial || 'N/A'}
+            {selectedVehicle?.vehicle_license_plate || 'N/A'}
           </div>
         </div>
       </div>

@@ -20,7 +20,8 @@ function UpdateCustomerForm() {
     useEffect(() => {
         const fetchCustomerDetails = async () => {
             try {
-                const response = await customerService.getCustomer(customer_id);
+                const token = localStorage.getItem('employee_token');
+                const response = await customerService.getCustomer(customer_id, token);
                 const data = await response.json();
 
                 if (data.status === "success") {
@@ -77,8 +78,9 @@ function UpdateCustomerForm() {
             active_customer,
         };
 
+        const token = localStorage.getItem('employee_token');
         customerService
-            .updateCustomer(customer_id, formData)
+            .updateCustomer(customer_id, formData, token)
             .then((response) => response.json())
             .then((data) => {
                 if (data.error) {

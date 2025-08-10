@@ -84,7 +84,7 @@ const getCustomer = async (customerId, token) => {
         },
     };
     const response = await fetch(
-        `${api_url}/api/customers/${customerId}`,
+        `${api_url}/api/customers/${customerId}?t=${Date.now()}`,
         requestOptions
     );
     return response;

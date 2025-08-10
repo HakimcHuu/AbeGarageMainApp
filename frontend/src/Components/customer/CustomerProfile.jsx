@@ -21,6 +21,9 @@ const CustomerProfile = () => {
   const [activeTab, setActiveTab] = useState("info");
   const [loading, setLoading] = useState(true);
 
+  // Normalize active_customer to boolean consistently
+  const normalizeActiveFlag = (val) => val === true || val === 1 || val === '1' || String(val).toLowerCase() === 'true';
+
   const [formData, setFormData] = useState({
     vehicle_make: "",
     vehicle_model: "",
@@ -66,7 +69,8 @@ const CustomerProfile = () => {
         }
         const customerData = await customerRes.json();
         console.log("Raw customer data response:", customerData);
-        setCustomerData(customerData.data);
+        const normalizedActive = customerData?.data ? normalizeActiveFlag(customerData.data.active_customer) : false;
+        setCustomerData({ ...(customerData?.data || {}), active_customer: normalizedActive });
 
         // Handle vehicles data
         if (!vehiclesRes.ok) {
@@ -131,6 +135,41 @@ const CustomerProfile = () => {
       }
     }, 5000);
     return () => clearInterval(interval);
+  }, [customer_id]);
+
+  // Refetch customer info on focus/visibility/BFCache restore and periodic polling
+  useEffect(() => {
+    const token = localStorage.getItem("employee_token") || localStorage.getItem("customer_token");
+    if (!customer_id || !token) return;
+
+    const refetch = async () => {
+      try {
+        const res = await customerService.getCustomer(customer_id, token);
+        if (res.ok) {
+          const json = await res.json();
+          const normalizedActive = json?.data ? normalizeActiveFlag(json.data.active_customer) : false;
+          setCustomerData({ ...(json?.data || {}), active_customer: normalizedActive });
+        }
+      } catch (e) {
+        // ignore refetch errors
+      }
+    };
+
+    const onVis = () => {
+      if (document.visibilityState === 'visible') refetch();
+    };
+
+    window.addEventListener('focus', refetch);
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('pageshow', refetch);
+    const interval = setInterval(refetch, 10000);
+
+    return () => {
+      window.removeEventListener('focus', refetch);
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('pageshow', refetch);
+      clearInterval(interval);
+    };
   }, [customer_id]);
 
   // Handler for editing a vehicle
@@ -552,8 +591,12 @@ const CustomerProfile = () => {
                     <p><strong>Phone:</strong> {customerData.customer_phone || 'N/A'}</p>
                   </Col>
                   <Col md={6}>
-                    <p><strong>Address:</strong> {customerData.customer_address || 'N/A'}</p>
-                    <p><strong>City:</strong> {customerData.customer_city || 'N/A'}</p>
+                    {customerData.customer_address && (
+                      <p><strong>Address:</strong> {customerData.customer_address}</p>
+                    )}
+                    {customerData.customer_city && (
+                      <p><strong>City:</strong> {customerData.customer_city}</p>
+                    )}
                   </Col>
                 </Row>
               </div>
@@ -680,18 +723,8 @@ const CustomerProfile = () => {
                             <td>
                               {(() => {
                                 const displayStatus = mapCustomerVisibleStatus(order.order_status);
-                                const { text } = getBootstrapBadgeProps(displayStatus);
-                                const variantMap = {
-                                  received: 'info',
-                                  pending: 'secondary',
-                                  in_progress: 'warning',
-                                  completed: 'success',
-                                  ready_for_pickup: 'primary',
-                                  done: 'success',
-                                  cancelled: 'danger',
-                                };
-                                const variant = variantMap[displayStatus] || 'secondary';
-                                return <Badge bg={variant} className="text-white">{text}</Badge>;
+                                const { style, text } = getBootstrapBadgeProps(displayStatus);
+                                return <span className="badge" style={style}>{text}</span>;
                               })()}
                             </td>
                             <td>${order.total_amount?.toFixed(2) || '0.00'}</td>

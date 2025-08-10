@@ -20,13 +20,14 @@ const STATUS_MAP = {
 
 // Unified HEX colors across the app
 const COLOR_HEX = {
-  received: '#2196F3',
-  pending: '#9E9E9E',
-  in_progress: '#FF9800',
-  completed: '#4CAF50',
-  ready_for_pickup: '#3F51B5',
-  done: '#009688',
-  cancelled: '#F44336',
+  // Theme colors per requirement
+  pending: '#FFEB3B', // Yellow
+  received: '#9E9E9E', // Gray
+  in_progress: '#2196F3', // Blue
+  completed: '#4CAF50', // Green
+  ready_for_pickup: '#FF9800', // Orange
+  cancelled: '#F44336', // Red
+  done: '#2E7D32', // Dark Green
   not_submitted: '#673AB7',
 };
 

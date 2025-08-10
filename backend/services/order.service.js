@@ -320,15 +320,16 @@ const getAllOrders = async () => {
       const totalCount = Number(row.total_count || 0);
       const submittedCount = Number(row.submitted_count || 0);
       const checkedCount = Number(row.checked_count || 0);
-      const currentStatus = typeof row.order_status === 'string' ? row.order_status : 'pending';
+      const currentStatus =
+        typeof row.order_status === "string" ? row.order_status : "pending";
       let computedStatus = currentStatus;
-      if (currentStatus !== 'done' && currentStatus !== 'ready_for_pickup') {
+      if (currentStatus !== "done" && currentStatus !== "ready_for_pickup") {
         if (totalCount > 0 && submittedCount === totalCount) {
-          computedStatus = 'completed';
+          computedStatus = "completed";
         } else if (checkedCount > 0 || submittedCount > 0) {
-          computedStatus = 'in_progress';
+          computedStatus = "in_progress";
         } else {
-          computedStatus = 'pending';
+          computedStatus = "pending";
         }
       }
       const normalizedStatus = statusMap[computedStatus] ?? 1;
@@ -404,6 +405,8 @@ const getOrderById = async (orderId) => {
                 v.vehicle_license_plate,
                 v.vehicle_vin,
                 v.vehicle_mileage,
+                v.vehicle_transmission_type,
+                v.vehicle_fuel_type,
                 e.employee_first_name,
                 e.employee_last_name,
                 oi.order_total_price,
@@ -480,16 +483,21 @@ const getOrderById = async (orderId) => {
 
     // Compute overall status for admin view: Completed only when all submitted; otherwise In Progress (if any tasks exist)
     const totalCount = services.length;
-    const submittedCount = services.filter(s => s.service_status === 'completed').length;
-    const checkedCount = services.filter(s => s.service_completed === 1).length;
-    let computedStatus = typeof row.order_status === 'string' ? row.order_status : 'pending';
-    if (computedStatus !== 'done' && computedStatus !== 'ready_for_pickup') {
+    const submittedCount = services.filter(
+      (s) => s.service_status === "completed"
+    ).length;
+    const checkedCount = services.filter(
+      (s) => s.service_completed === 1
+    ).length;
+    let computedStatus =
+      typeof row.order_status === "string" ? row.order_status : "pending";
+    if (computedStatus !== "done" && computedStatus !== "ready_for_pickup") {
       if (totalCount > 0 && submittedCount === totalCount) {
-        computedStatus = 'completed';
+        computedStatus = "completed";
       } else if (checkedCount > 0 || submittedCount > 0) {
-        computedStatus = 'in_progress';
+        computedStatus = "in_progress";
       } else {
-        computedStatus = 'pending';
+        computedStatus = "pending";
       }
     }
     const normalizedStatus = statusMap[computedStatus] ?? 1;
@@ -508,6 +516,7 @@ const getOrderById = async (orderId) => {
       vehicle_license_plate: row.vehicle_license_plate || "",
       vehicle_vin: row.vehicle_vin || "",
       vehicle_mileage: row.vehicle_mileage || 0,
+      vehicle_type: row.vehicle_fuel_type || "",
       employee_first_name: row.employee_first_name || "N/A",
       employee_last_name: row.employee_last_name || "",
       order_total_price: parseFloat(row.order_total_price) || 0,
@@ -602,8 +611,24 @@ const updateOrderStatus = async (orderId, status, changedByEmployeeId) => {
   };
   const statusString = statusMap[status] || "pending";
 
+  // Enforce rule: when order is in 'pending' (Received), only allow transition to 'cancelled'
+  const currentStatusRow = await db.query(
+    `SELECT order_status FROM orders WHERE order_id = ?`,
+    [orderId]
+  );
+  const currentStatus = currentStatusRow?.[0]?.order_status || "pending";
+  if (currentStatus === "pending" && statusString !== "cancelled") {
+    throw new Error(
+      "Only 'Cancel' is allowed when the order is in 'Received' state."
+    );
+  }
+
   // If admin attempts to set to 'completed' or 'ready_for_pickup', enforce all services completed/submitted
-  if (statusString === 'completed' || statusString === 'ready_for_pickup' || statusString === 'done') {
+  if (
+    statusString === "completed" ||
+    statusString === "ready_for_pickup" ||
+    statusString === "done"
+  ) {
     const svcAgg = await db.query(
       `SELECT COUNT(*) AS total, SUM(CASE WHEN COALESCE(os_view.status, os.service_status) = 'completed' THEN 1 ELSE 0 END) AS completed
        FROM order_services os
@@ -616,7 +641,9 @@ const updateOrderStatus = async (orderId, status, changedByEmployeeId) => {
     if (total === 0 || completed < total) {
       // Block transition until every employee's assigned tasks are completed and submitted
       throw new Error(
-        "Cannot update status to '" + statusString + "' until all assigned services are completed and submitted by their employees."
+        "Cannot update status to '" +
+          statusString +
+          "' until all assigned services are completed and submitted by their employees."
       );
     }
   }
