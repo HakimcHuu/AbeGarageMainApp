@@ -101,8 +101,13 @@ function EmployeeDashboard() {
     try {
       setBusy(true);
       setError("");
-      // Submit all checked tasks for this order (set to completed)
       const items = tasksByOrder[orderId] || [];
+      const orderOverall = Number(items?.[0]?.overall_order_status || 1);
+      if (orderOverall === 5) {
+        window.alert("Order is Done and cannot be submitted.");
+        return;
+      }
+      // Submit all checked tasks for this order (set to completed)
       for (const t of items) {
         if (Number(t.order_status) >= 2) {
           await employeeService.updateTaskStatus(t.order_service_id, 3, token);
@@ -119,6 +124,11 @@ function EmployeeDashboard() {
   };
 
   const toggleTask = async (orderId, task, itemsInOrder) => {
+    // Prevent modifying tasks when the entire order is Done
+    if (Number(itemsInOrder?.[0]?.overall_order_status || 1) === 5) {
+      window.alert("Order is Done and tasks cannot be modified.");
+      return;
+    }
     try {
       setBusy(true);
       setError("");
@@ -147,11 +157,19 @@ function EmployeeDashboard() {
   };
 
   const prettyStatus = (statusNum) => {
-    // Employee page: no "In Progress" badge. Show Completed when checked (2 or 3), Received when unchecked (1)
-    const normalized = Number(statusNum);
-    if (normalized >= 2) return "Completed";
-    if (normalized === 1) return "Received";
+    const s = Number(statusNum);
+    if (s === 3) return "Completed";
+    if (s === 2) return "In Progress";
     return "Received";
+  };
+
+  const prettyOrderStatus = (statusNum) => {
+    const s = Number(statusNum);
+    if (s === 5) return "Done";
+    if (s === 4) return "Ready for Pick Up";
+    if (s === 3) return "Completed";
+    if (s === 2) return "In Progress";
+    return "Pending";
   };
 
   return (
@@ -181,15 +199,26 @@ function EmployeeDashboard() {
                 {Object.entries(tasksByOrder).map(([orderId, items]) => {
                   const isExpanded = !!expandedOrders[orderId];
                   const allChecked = items.every((t) => Number(t.order_status) >= 2);
+                  const orderOverall = Number(items[0]?.overall_order_status || 1);
                   return (
                     <div key={orderId} className="col-md-12" style={{ marginBottom: 16 }}>
                       <div className="card" style={{ padding: 16, borderRadius: 6, border: "1px solid #eee" }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div style={{ fontWeight: 700 }}>
-                            Order #{orderId} • {allChecked ? 'All tasks checked' : 'Tasks pending'}
+                          <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span>Order #{orderId} • {allChecked ? 'All tasks checked' : 'Tasks pending'}</span>
+                            <span style={{
+                              padding: '2px 8px',
+                              borderRadius: '12px',
+                              backgroundColor: orderOverall === 5 ? '#d4edda' : orderOverall === 4 ? '#cce5ff' : orderOverall === 3 ? '#e2e3e5' : orderOverall === 2 ? '#fff3cd' : '#f8d7da',
+                              color: orderOverall === 5 ? '#155724' : orderOverall === 4 ? '#004085' : orderOverall === 3 ? '#383d41' : orderOverall === 2 ? '#856404' : '#721c24',
+                              fontSize: '0.8em',
+                              fontWeight: 600
+                            }}>
+                              {prettyOrderStatus(orderOverall)}
+                            </span>
                           </div>
                           <div style={{ display: 'flex', gap: 8 }}>
-                            {allChecked && (
+                            {allChecked && orderOverall !== 5 && (
                               <button
                                 className="theme-btn btn-style-one"
                                 onClick={() => handleSubmitOrder(orderId)}

@@ -636,6 +636,11 @@ const EmployeeProfile = () => {
   // };
 const handleSaveStatus = async (orderServiceId) => {
   const updatedStatus = parseInt(selectedStatus[orderServiceId], 10);
+  const task = tasks.find((t) => t.order_service_id === orderServiceId);
+  if (task && Number(task.overall_order_status) === 5) {
+    window.alert("Order is Done. You cannot change task status.");
+    return;
+  }
 
   try {
     const response = await employeeService.updateTaskStatus(
@@ -715,6 +720,21 @@ const handleSaveStatus = async (orderServiceId) => {
     }
   };
 
+  const getOrderStatusBadge = (status) => {
+    switch (Number(status)) {
+      case 5:
+        return <span className="badge bg-success">Done</span>;
+      case 4:
+        return <span className="badge bg-info text-dark">Ready for Pick Up</span>;
+      case 3:
+        return <span className="badge bg-secondary">Completed</span>;
+      case 2:
+        return <span className="badge bg-warning text-dark">In progress</span>;
+      default:
+        return <span className="badge bg-light text-dark">Pending</span>;
+    }
+  };
+
   if (loading) {
     return (
       <Container className="d-flex justify-content-center mt-5">
@@ -744,6 +764,7 @@ const handleSaveStatus = async (orderServiceId) => {
 
     if (!acc[order_id]) {
       acc[order_id] = {
+        overall_order_status: task.overall_order_status,
         customer: {
           customer_first_name: task.customer_first_name,
           customer_last_name: task.customer_last_name,
@@ -809,6 +830,7 @@ const handleSaveStatus = async (orderServiceId) => {
                   <Card.Body>
                     <h5 className="text-uppercase mb-3">
                       Order ID: #{order_id}
+                      <span className="ms-2">{getOrderStatusBadge(orders[order_id].overall_order_status)}</span>
                     </h5>
                     <div className="d-flex flex-wrap gap-4">
                       {" "}
@@ -871,7 +893,8 @@ const handleSaveStatus = async (orderServiceId) => {
                               </span>
                               {isLogged &&
                                 isEmployee &&
-                                service.order_status !== 3 && (
+                                service.order_status !== 3 &&
+                                orders[order_id].overall_order_status !== 5 && (
                                   <>
                                     {!isEditingStatus[
                                       service.order_service_id

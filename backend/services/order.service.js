@@ -319,12 +319,13 @@ const getAllOrders = async () => {
 
       const totalCount = Number(row.total_count || 0);
       const submittedCount = Number(row.submitted_count || 0);
+      const checkedCount = Number(row.checked_count || 0);
       const currentStatus = typeof row.order_status === 'string' ? row.order_status : 'pending';
       let computedStatus = currentStatus;
       if (currentStatus !== 'done' && currentStatus !== 'ready_for_pickup') {
         if (totalCount > 0 && submittedCount === totalCount) {
           computedStatus = 'completed';
-        } else if (totalCount > 0) {
+        } else if (checkedCount > 0 || submittedCount > 0) {
           computedStatus = 'in_progress';
         } else {
           computedStatus = 'pending';
@@ -480,11 +481,12 @@ const getOrderById = async (orderId) => {
     // Compute overall status for admin view: Completed only when all submitted; otherwise In Progress (if any tasks exist)
     const totalCount = services.length;
     const submittedCount = services.filter(s => s.service_status === 'completed').length;
+    const checkedCount = services.filter(s => s.service_completed === 1).length;
     let computedStatus = typeof row.order_status === 'string' ? row.order_status : 'pending';
     if (computedStatus !== 'done' && computedStatus !== 'ready_for_pickup') {
       if (totalCount > 0 && submittedCount === totalCount) {
         computedStatus = 'completed';
-      } else if (totalCount > 0) {
+      } else if (checkedCount > 0 || submittedCount > 0) {
         computedStatus = 'in_progress';
       } else {
         computedStatus = 'pending';

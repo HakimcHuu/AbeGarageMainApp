@@ -147,6 +147,9 @@ const OrderDetails = () => {
 
   // Determine if all services are completed for admin transitions
   const allServicesCompleted = Array.isArray(order?.services) && order.services.every(s => (s.service_status === 'completed') || s.service_completed === 1);
+  const currentStatus = Number(order?.order_status);
+  const isCompleted = currentStatus === 3;
+  const isDone = currentStatus === 5;
 
   return (
     <div className="order-details-container">
@@ -175,8 +178,16 @@ const OrderDetails = () => {
               style={{ width: 200 }}
               onChange={async (val) => {
                 // Prevent invalid transitions client-side for immediate feedback
+                if (isDone && val !== 6) {
+                  message.error('Only Cancel is allowed when order is Done.');
+                  return;
+                }
                 if ((val === 3 || val === 4 || val === 5) && !allServicesCompleted) {
                   message.error('All service tasks must be completed and submitted before setting Completed, Ready for Pick Up, or Done.');
+                  return;
+                }
+                if (isCompleted && ![4, 5, 6].includes(val)) {
+                  message.error('From Completed, only Ready for Pick Up, Done, or Cancel are allowed.');
                   return;
                 }
                 try {
@@ -192,7 +203,15 @@ const OrderDetails = () => {
                   setUpdatingStatus(false);
                 }
               }}
-              options={[1,2,3,4,5,6].map(v => ({ value: v, label: getAntdTagProps(v).text, disabled: (v === 3 || v === 4 || v === 5) && !allServicesCompleted }))}
+              options={[1,2,3,4,5,6].map(v => ({ 
+                value: v, 
+                label: getAntdTagProps(v).text, 
+                disabled: isDone 
+                  ? v !== 6 
+                  : isCompleted 
+                    ? ![4, 5, 6].includes(v) 
+                    : ((v === 3 || v === 4 || v === 5) && !allServicesCompleted) 
+              }))}
               loading={updatingStatus}
             />
             <Button onClick={() => navigate(`/admin/edit-order/${order.order_id}`)} type="default">Edit</Button>

@@ -691,16 +691,20 @@ const updateTaskStatus = async (order_service_id, newStatus, changedByEmployeeId
     const checked = Number(agg?.[0]?.checked || 0);
 
     let newOrderStatus = currentOrderStatus;
-    if (currentOrderStatus !== 'ready_for_pickup' && currentOrderStatus !== 'done') {
-      if (total > 0 && submitted === total) {
-        newOrderStatus = 'completed';
-      } else if (total > 0 && checked === total && submitted < total) {
-        // All checked but not all submitted -> keep as in_progress (overall)
-        newOrderStatus = 'in_progress';
-      } else if (checked > 0 || submitted > 0) {
-        newOrderStatus = 'in_progress';
+    // If order is not locked as 'done', recompute status.
+    if (currentOrderStatus !== 'done') {
+      if (newStatus === 1) {
+        // Employee unchecked a task: if no tasks are checked/submitted after this action, mark overall as 'pending' (Received);
+        // otherwise, it's still 'in_progress'.
+        newOrderStatus = (checked === 0 && submitted === 0) ? 'pending' : 'in_progress';
       } else {
-        newOrderStatus = 'pending';
+        if (total > 0 && submitted === total) {
+          newOrderStatus = 'completed';
+        } else if (checked > 0 || submitted > 0) {
+          newOrderStatus = 'in_progress';
+        } else {
+          newOrderStatus = 'pending';
+        }
       }
     }
 
