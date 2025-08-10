@@ -224,7 +224,7 @@ const OrderDetails = () => {
               }))}
               loading={updatingStatus}
             />
-            <Button onClick={() => navigate(`/admin/edit-order/${order.order_id}`)} type="default" disabled={isCancelled || isDone}>
+            <Button onClick={() => navigate(`/admin/edit-order/${order.order_id}`)} type="default">
               Edit
             </Button>
             <Popconfirm title="Delete this order?" onConfirm={handleDelete} okButtonProps={{ loading: deleting }}>

@@ -34,6 +34,7 @@ const EditOrderForm = () => {
   const [initialData, setInitialData] = useState(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [currentStatus, setCurrentStatus] = useState(1);
+  const isEditable = currentStatus !== 5 && currentStatus !== 6; // editable unless Done(5) or Cancelled(6)
 
   // Function to check if data has changed
   const checkForChanges = (currentData, originalData) => {
@@ -163,26 +164,28 @@ const EditOrderForm = () => {
       setIsLoading(false);
     };
 
-    if (orderData) {
-      initFromData(orderData);
-    } else if (routeOrderId) {
-      (async () => {
-        try {
-          setIsLoading(true);
-          const data = await Service.getOrderDetails(routeOrderId);
-          console.log("Loaded order details:", data);
-          initFromData({ ...data, order_id: routeOrderId, selectedServices: data.services || [] });
-        } catch (e) {
-          console.error('Failed to load order details for editing:', e);
-          alert('Failed to load order details. Please try again.');
-          navigate('/admin/orders');
-        } finally {
-          setIsLoading(false);
+    (async () => {
+      try {
+        setIsLoading(true);
+        // Seed immediate view with passed list record if available
+        if (orderData) {
+          initFromData(orderData);
         }
-      })();
-    } else {
-      setIsLoading(false);
-    }
+        // Always fetch full details to hydrate assignments, statuses, etc.
+        if (routeOrderId) {
+          const full = await Service.getOrderDetails(routeOrderId);
+          console.log("Loaded full order details:", full);
+          initFromData({ ...full, order_id: routeOrderId, selectedServices: full.services || [] });
+          if (typeof full.order_status === 'number') setCurrentStatus(Number(full.order_status));
+        }
+      } catch (e) {
+        console.error('Failed to load order details for editing:', e);
+        alert('Failed to load order details. Please try again.');
+        navigate('/admin/orders');
+      } finally {
+        setIsLoading(false);
+      }
+    })();
   }, [orderData, routeOrderId, navigate]);
 
   // Load employees for service assignments
@@ -318,9 +321,9 @@ const EditOrderForm = () => {
           <ArrowLeftOutlined /> Back to Orders
         </button>
         <h1 className="page-title">Edit Order #{orderData?.order_id || routeOrderId}</h1>
-        {(currentStatus === 6 || currentStatus === 5) && (
+        {(!isEditable) && (
           <div className="no-changes-alert" style={{ background: '#fee2e2', color: '#991b1b', borderColor: '#ef4444' }}>
-            <ExclamationCircleOutlined /> This order is {currentStatus === 6 ? 'Cancelled' : 'Done'}. Change status to Received before editing.
+            <ExclamationCircleOutlined /> This order status is not editable. Change status to Received to make edits.
           </div>
         )}
         {!hasChanges && (
@@ -405,6 +408,7 @@ const EditOrderForm = () => {
         <ServiceSelection
           onSelectServices={handleSelectServices}
           selectedServices={selectedServices.map(s => s.service_id)}
+          disabled={!isEditable}
         />
         {console.log("Selected services for ServiceSelection:", selectedServices.map(s => s.service_id))}
 
@@ -428,7 +432,7 @@ const EditOrderForm = () => {
                       value={serviceAssignments.find(a => a.service_id === service.service_id)?.employee_id || ''}
                       onChange={(e) => handleAssignEmployeeToService(service.service_id, e.target.value)}
                       className="assign-select"
-                      disabled={currentStatus === 6 || currentStatus === 5}
+                      disabled={!isEditable}
                     >
                       <option value="">Unassigned</option>
                       {employees.map(emp => (
@@ -460,7 +464,7 @@ const EditOrderForm = () => {
               placeholder="Enter total price"
               min="0"
               step="0.01"
-                disabled={currentStatus === 6 || currentStatus === 5}
+                disabled={!isEditable}
             />
           </div>
           <div className="form-item">
@@ -469,7 +473,7 @@ const EditOrderForm = () => {
               type="date"
               value={estimatedCompletionDate}
               onChange={(e) => setEstimatedCompletionDate(e.target.value)}
-                disabled={currentStatus === 6 || currentStatus === 5}
+                disabled={!isEditable}
             />
           </div>
         </div>
@@ -480,7 +484,7 @@ const EditOrderForm = () => {
             onChange={(e) => setAdditionalRequest(e.target.value)}
             placeholder="Any special instructions or notes..."
             rows={4}
-                disabled={currentStatus === 6 || currentStatus === 5}
+                disabled={!isEditable}
           />
         </div>
       </div>
@@ -497,7 +501,7 @@ const EditOrderForm = () => {
         <button 
           className="btn btn-primary" 
           onClick={handleUpdateOrder}
-          disabled={isLoading || !hasChanges || currentStatus === 6 || currentStatus === 5}
+          disabled={isLoading || !hasChanges || !isEditable}
         >
           <SaveOutlined /> {isLoading ? 'Saving...' : 'Save Changes'}
         </button>

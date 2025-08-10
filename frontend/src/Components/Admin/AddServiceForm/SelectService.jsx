@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import serviceService from "../../services/service.service";
 
-const ServiceSelection = ({ onSelectServices, selectedServices = [] }) => {
+const ServiceSelection = ({ onSelectServices, selectedServices = [], disabled = false }) => {
   const [loading, setLoading] = useState(true);
   const [services, setServices] = useState([]);
   const [error, setError] = useState(null);
@@ -59,6 +59,7 @@ const ServiceSelection = ({ onSelectServices, selectedServices = [] }) => {
   }, [selectedServices, services]);
 
   const handleToggle = (service) => {
+    if (disabled) return;
     let updated;
     const serviceId = Number(service.service_id);
     if (selectedIds.includes(serviceId)) {
@@ -95,7 +96,7 @@ const ServiceSelection = ({ onSelectServices, selectedServices = [] }) => {
       {!loading && services.length === 0 && (
         <div className="d-flex align-items-center gap-2">
           <p className="mb-0">No services available.</p>
-          <button className="btn btn-sm btn-outline-primary" onClick={handleSeedDefaults}>
+          <button className="btn btn-sm btn-outline-primary" onClick={handleSeedDefaults} disabled={disabled}>
             Seed default services
           </button>
         </div>
@@ -114,6 +115,7 @@ const ServiceSelection = ({ onSelectServices, selectedServices = [] }) => {
                   type="checkbox"
                   checked={selectedIds.includes(Number(service.service_id))}
                   onChange={() => handleToggle(service)}
+                  disabled={disabled}
                 />
               </div>
             </div>
