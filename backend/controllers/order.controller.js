@@ -1,5 +1,6 @@
 const orderService = require("../services/order.service");
-const customerService = require('../services/customer.service'); 
+const customerService = require('../services/customer.service');
+const db = require("../config/db.config"); 
 
 // Example function to fetch customers within order context
 const getAllCustomersForOrder = async (req, res) => {

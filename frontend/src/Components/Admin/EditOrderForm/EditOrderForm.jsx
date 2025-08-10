@@ -7,9 +7,11 @@ import {
   DollarOutlined, 
   CalendarOutlined,
   ArrowLeftOutlined,
-  SaveOutlined
+  SaveOutlined,
+  ExclamationCircleOutlined
 } from "@ant-design/icons";
 import Service from "../../services/order.service";
+import employeeService from "../../services/employee.service";
 import ServiceSelection from "../AddServiceForm/SelectService";
 import './EditOrderForm.css';
 
@@ -30,18 +32,74 @@ const EditOrderForm = () => {
   const [estimatedCompletionDate, setEstimatedCompletionDate] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [initialData, setInitialData] = useState(null);
+  const [hasChanges, setHasChanges] = useState(false);
+
+  // Function to check if data has changed
+  const checkForChanges = (currentData, originalData) => {
+    if (!originalData) return true;
+    
+    // Compare basic fields
+    const basicFieldsChanged = 
+      currentData.order_total_price !== originalData.order_total_price ||
+      currentData.additional_request !== originalData.additional_request ||
+      currentData.estimated_completion_date !== originalData.estimated_completion_date;
+    
+    if (basicFieldsChanged) return true;
+    
+    // Compare services and assignments
+    const currentServices = currentData.services || [];
+    const originalServices = originalData.services || [];
+    
+    if (currentServices.length !== originalServices.length) return true;
+    
+    // Check if any service assignments have changed
+    for (let i = 0; i < currentServices.length; i++) {
+      const current = currentServices[i];
+      const original = originalServices[i];
+      
+      if (current.service_id !== original.service_id ||
+          current.employee_id !== original.employee_id) {
+        return true;
+      }
+    }
+    
+    return false;
+  };
 
   // Initialize form with order data
   useEffect(() => {
     const initFromData = (data) => {
+      console.log("Initializing form with data:", data);
+      
+      // Format estimated completion date for input field
+      const formatDateForInput = (dateString) => {
+        if (!dateString) return "";
+        const date = new Date(dateString);
+        if (isNaN(date.getTime())) return "";
+        return date.toISOString().split('T')[0];
+      };
+
       const initial = {
         order_total_price: data.order_total_price || "",
         additional_request: data.additional_request || "",
-        estimated_completion_date: data.estimated_completion_date || "",
-        services: (data.services || data.selectedServices || []).map(s => ({
-          service_id: s.service_id,
-          employee_id: s.assigned_employee_id || null
-        }))
+        estimated_completion_date: formatDateForInput(data.estimated_completion_date),
+        services: (data.services || data.selectedServices || []).map(s => {
+          let employeeId = null;
+          
+          // Check if there's an assigned employee in the assigned array
+          if (s.assigned && s.assigned.length > 0) {
+            employeeId = s.assigned[0].employee_id;
+          }
+          // Fallback to direct properties if assigned array doesn't exist
+          else {
+            employeeId = s.assigned_employee_id || s.employee_id || null;
+          }
+          
+          return {
+            service_id: s.service_id,
+            employee_id: employeeId
+          };
+        })
       };
       setInitialData(initial);
 
@@ -66,22 +124,39 @@ const EditOrderForm = () => {
 
       setAdditionalRequest(data.additional_request || "");
       setOrderPrice(data.order_total_price || "");
-      setEstimatedCompletionDate(data.estimated_completion_date || "");
+      setEstimatedCompletionDate(formatDateForInput(data.estimated_completion_date));
 
       if (data.services || data.selectedServices) {
         const src = data.services || data.selectedServices;
+        console.log("Services data structure:", src);
         const formattedServices = src.map((service) => ({
           service_id: service.service_id,
           service_name: service.service_name || `Service #${service.service_id}`,
           service_completed: service.service_completed || 0,
         }));
         setSelectedServices(formattedServices);
-        setServiceAssignments(
-          formattedServices.map((s) => ({
+        
+        const assignments = formattedServices.map((s) => {
+          // Find the original service data to get employee assignment
+          const originalService = src.find(orig => orig.service_id === s.service_id);
+          let employeeId = null;
+          
+          // Check if there's an assigned employee in the assigned array
+          if (originalService && originalService.assigned && originalService.assigned.length > 0) {
+            employeeId = originalService.assigned[0].employee_id;
+          }
+          // Fallback to direct properties if assigned array doesn't exist
+          else if (originalService) {
+            employeeId = originalService.assigned_employee_id || originalService.employee_id || null;
+          }
+          
+          return {
             service_id: s.service_id,
-            employee_id: s.assigned_employee_id || null,
-          }))
-        );
+            employee_id: employeeId,
+          };
+        });
+        console.log("Service assignments:", assignments);
+        setServiceAssignments(assignments);
       }
       setIsLoading(false);
     };
@@ -93,59 +168,77 @@ const EditOrderForm = () => {
         try {
           setIsLoading(true);
           const data = await Service.getOrderDetails(routeOrderId);
+          console.log("Loaded order details:", data);
           initFromData({ ...data, order_id: routeOrderId, selectedServices: data.services || [] });
         } catch (e) {
           console.error('Failed to load order details for editing:', e);
+          alert('Failed to load order details. Please try again.');
+          navigate('/admin/orders');
+        } finally {
           setIsLoading(false);
         }
       })();
+    } else {
+      setIsLoading(false);
     }
-  }, [orderData, routeOrderId]);
+  }, [orderData, routeOrderId, navigate]);
 
-  // Load employees if there are services to assign
+  // Load employees for service assignments
   useEffect(() => {
     const loadEmployees = async () => {
       try {
-        const emps = await Service.getEmployeesByRole(1);
-        setEmployees(emps || []);
-      } catch (e) {
-        console.error('Failed to load employees for assignment', e);
+        console.log("Loading all employees...");
+        const response = await employeeService.getAllEmployees(localStorage.getItem('employee_token'));
+        if (response.ok) {
+          const data = await response.json();
+          console.log("Employees loaded:", data.data);
+          setEmployees(data.data || []);
+        } else {
+          console.error('Failed to load employees:', response.statusText);
+        }
+      } catch (error) {
+        console.error('Failed to load employees:', error);
       }
     };
+    loadEmployees();
+  }, []);
+
+  // Monitor changes and update hasChanges state
+  useEffect(() => {
+    const currentData = {
+      order_total_price: orderPrice,
+      additional_request: additionalRequest,
+      estimated_completion_date: estimatedCompletionDate,
+      services: serviceAssignments
+    };
     
-    if (selectedServices.length > 0) {
-      loadEmployees();
-    } else {
-      setEmployees([]);
-    }
-  }, [selectedServices]);
-  
+    const changed = checkForChanges(currentData, initialData);
+    setHasChanges(changed);
+  }, [orderPrice, additionalRequest, estimatedCompletionDate, serviceAssignments, initialData]);
+
   const handleSelectServices = (services) => {
-    const updatedServiceData = services.map(serviceId => {
-      const existing = selectedServices.find(s => s.service_id === serviceId);
-      return existing || { 
-        service_id: serviceId, 
-        service_name: `Service #${serviceId}`,
-        service_completed: 0 
-      };
-    });
+    const formattedServices = services.map((service) => ({
+      service_id: service.service_id,
+      service_name: service.service_name,
+      service_completed: 0,
+    }));
+    setSelectedServices(formattedServices);
     
-    setSelectedServices(updatedServiceData);
-    setServiceAssignments(prev => [
-      ...prev.filter(a => services.includes(a.service_id)),
-      ...updatedServiceData
-        .filter(s => !prev.some(a => a.service_id === s.service_id))
-        .map(s => ({
-          service_id: s.service_id,
-          employee_id: null
-        }))
-    ]);
+    // Update assignments to include new services
+    const newAssignments = formattedServices.map((s) => ({
+      service_id: s.service_id,
+      employee_id: serviceAssignments.find(a => a.service_id === s.service_id)?.employee_id || null,
+    }));
+    setServiceAssignments(newAssignments);
   };
 
   const handleAssignEmployeeToService = (serviceId, employeeId) => {
-    const parsed = employeeId === '' ? null : Number(employeeId);
-    setServiceAssignments(prev =>
-      prev.map(a => (a.service_id === serviceId ? { ...a, employee_id: parsed } : a))
+    setServiceAssignments(prev => 
+      prev.map(assignment => 
+        assignment.service_id === serviceId 
+          ? { ...assignment, employee_id: employeeId || null }
+          : assignment
+      )
     );
   };
 
@@ -159,19 +252,17 @@ const EditOrderForm = () => {
         services: serviceAssignments
       };
 
-      // Compare current data with initial data
-      const hasChanges = !initialData || 
-        JSON.stringify(currentData) !== JSON.stringify({
-          ...initialData,
-          order_total_price: Number(initialData.order_total_price) || 0,
-          services: initialData.services.map(s => ({
-            service_id: s.service_id,
-            employee_id: s.employee_id
-          }))
-        });
-
       if (!hasChanges) {
-        alert("No changes were made to save.");
+        alert("No changes were made to save. The order is already up to date.");
+        return;
+      }
+
+      // Confirm with user before saving
+      const confirmSave = window.confirm(
+        "Are you sure you want to save these changes to the order?"
+      );
+      
+      if (!confirmSave) {
         return;
       }
 
@@ -225,6 +316,11 @@ const EditOrderForm = () => {
           <ArrowLeftOutlined /> Back to Orders
         </button>
         <h1 className="page-title">Edit Order #{orderData?.order_id || routeOrderId}</h1>
+        {!hasChanges && (
+          <div className="no-changes-alert">
+            <ExclamationCircleOutlined /> No changes detected
+          </div>
+        )}
       </div>
 
       {/* Customer Information */}
@@ -303,6 +399,7 @@ const EditOrderForm = () => {
           onSelectServices={handleSelectServices}
           selectedServices={selectedServices.map(s => s.service_id)}
         />
+        {console.log("Selected services for ServiceSelection:", selectedServices.map(s => s.service_id))}
 
         {selectedServices.length > 0 && (
           <div className="mt-4">
@@ -389,7 +486,7 @@ const EditOrderForm = () => {
         <button 
           className="btn btn-primary" 
           onClick={handleUpdateOrder}
-          disabled={isLoading}
+          disabled={isLoading || !hasChanges}
         >
           <SaveOutlined /> {isLoading ? 'Saving...' : 'Save Changes'}
         </button>

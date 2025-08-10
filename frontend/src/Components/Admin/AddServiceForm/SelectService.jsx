@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import serviceService from "../../services/service.service";
 
-const ServiceSelection = ({ onSelectServices }) => {
+const ServiceSelection = ({ onSelectServices, selectedServices = [] }) => {
   const [loading, setLoading] = useState(true);
   const [services, setServices] = useState([]);
   const [error, setError] = useState(null);
@@ -26,12 +26,45 @@ const ServiceSelection = ({ onSelectServices }) => {
     loadServices();
   }, []);
 
+  // Set selected IDs when services are loaded and we have selectedServices
+  useEffect(() => {
+    if (services.length > 0 && selectedServices && selectedServices.length > 0) {
+      const ids = selectedServices.map(service => {
+        const id = typeof service === 'object' ? service.service_id : service;
+        return Number(id); // Ensure it's a number
+      });
+      console.log("Services loaded, setting selectedIds to:", ids);
+      setSelectedIds(ids);
+    }
+  }, [services, selectedServices]);
+
+  // Initialize selectedIds when selectedServices prop changes
+  useEffect(() => {
+    console.log("ServiceSelection received selectedServices:", selectedServices);
+    console.log("Services loaded:", services.length);
+    
+    if (selectedServices && selectedServices.length > 0 && services.length > 0) {
+      const ids = selectedServices.map(service => {
+        const id = typeof service === 'object' ? service.service_id : service;
+        return Number(id); // Ensure it's a number
+      });
+      console.log("Setting selectedIds to:", ids);
+      setSelectedIds(ids);
+    } else if (selectedServices && selectedServices.length > 0 && services.length === 0) {
+      console.log("Services not loaded yet, will set selectedIds when services load");
+    } else {
+      console.log("Setting selectedIds to empty array");
+      setSelectedIds([]);
+    }
+  }, [selectedServices, services]);
+
   const handleToggle = (service) => {
     let updated;
-    if (selectedIds.includes(service.service_id)) {
-      updated = selectedIds.filter((id) => id !== service.service_id);
+    const serviceId = Number(service.service_id);
+    if (selectedIds.includes(serviceId)) {
+      updated = selectedIds.filter((id) => id !== serviceId);
     } else {
-      updated = [...selectedIds, service.service_id];
+      updated = [...selectedIds, serviceId];
     }
     setSelectedIds(updated);
 
@@ -79,7 +112,7 @@ const ServiceSelection = ({ onSelectServices }) => {
                 </div>
                 <input
                   type="checkbox"
-                  checked={selectedIds.includes(service.service_id)}
+                  checked={selectedIds.includes(Number(service.service_id))}
                   onChange={() => handleToggle(service)}
                 />
               </div>

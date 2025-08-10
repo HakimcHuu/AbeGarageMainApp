@@ -248,6 +248,7 @@ const getAllOrders = async () => {
                 ci.customer_last_name,
                 c.customer_email,
                 ci.customer_phone,
+                c.active_customer,
                 v.vehicle_make,
                 v.vehicle_model,
                 v.vehicle_year,
@@ -399,6 +400,7 @@ const getOrderById = async (orderId) => {
                 ci.customer_last_name,
                 c.customer_email,
                 ci.customer_phone,
+                c.active_customer,
                 v.vehicle_make,
                 v.vehicle_model,
                 v.vehicle_year,
@@ -510,6 +512,7 @@ const getOrderById = async (orderId) => {
       customer_last_name: row.customer_last_name || "",
       customer_email: row.customer_email || "",
       customer_phone: row.customer_phone || "",
+      active_customer: row.active_customer,
       vehicle_make: row.vehicle_make || "N/A",
       vehicle_model: row.vehicle_model || "N/A",
       vehicle_year: row.vehicle_year || "",
@@ -668,8 +671,6 @@ async function updateOrderServices(order_id, services) {
     "with services:",
     services
   );
-  // Remove existing services (and cascading assignments)
-  await db.query("DELETE FROM order_services WHERE order_id = ?", [order_id]);
 
   // Helper to coerce nested/id shapes to number
   const coerceId = (val) => {
@@ -698,40 +699,144 @@ async function updateOrderServices(order_id, services) {
     );
 
   if (normalized.length === 0) {
-    console.log("No services provided; order has been cleared of services.");
-    return { message: "Order services updated successfully" };
+    console.log("No services provided; clearing all services for order ID:", order_id);
+    // Remove all existing services
+    await db.query("DELETE FROM order_services WHERE order_id = ?", [order_id]);
+    // Set overall order status to pending since no services exist
+    await db.query(`UPDATE orders SET order_status = 'pending' WHERE order_id = ?`, [order_id]);
+    return { message: "Order services cleared successfully" };
   }
 
-  const insertServiceQuery = `
-        INSERT INTO order_services (order_id, service_id, service_price, service_status, service_completed)
-        VALUES (?, ?, ?, 'pending', 0)
-    `;
-  const insertAssignmentQuery = `
-        INSERT INTO order_service_employee (order_service_id, employee_id, is_primary)
-        VALUES (?, ?, 1)
-    `;
-
   try {
-    for (const svc of normalized) {
-      const price = await getServicePrice(svc.service_id);
+    // Get current services for this order to preserve their status
+    const currentServicesQuery = `
+      SELECT os.order_service_id, os.service_id, os.service_completed, os.service_status,
+             ose.employee_id
+      FROM order_services os
+      LEFT JOIN order_service_employee ose ON os.order_service_id = ose.order_service_id
+      WHERE os.order_id = ?
+    `;
+    const currentServices = await db.query(currentServicesQuery, [order_id]);
+    console.log("Current services for order:", currentServices);
 
-      const result = await db.query(insertServiceQuery, [
-        Number(order_id),
-        Number(svc.service_id),
-        Number(price || 0),
-      ]);
+    // Create maps for easy lookup
+    const currentServiceMap = new Map();
+    currentServices.forEach(service => {
+      currentServiceMap.set(service.service_id, {
+        order_service_id: service.order_service_id,
+        service_completed: service.service_completed,
+        service_status: service.service_status,
+        employee_id: service.employee_id
+      });
+    });
+
+    const newServiceIds = new Set(normalized.map(s => s.service_id));
+    const currentServiceIds = new Set(currentServices.map(s => s.service_id));
+
+    // Services to remove (in current but not in new)
+    const servicesToRemove = currentServices.filter(s => !newServiceIds.has(s.service_id));
+    
+    // Services to add (in new but not in current)
+    const servicesToAdd = normalized.filter(s => !currentServiceIds.has(s.service_id));
+    
+    // Services to update (in both current and new - check for employee assignment changes)
+    const servicesToUpdate = normalized.filter(s => currentServiceIds.has(s.service_id));
+
+    console.log("Services to remove:", servicesToRemove.length);
+    console.log("Services to add:", servicesToAdd.length);
+    console.log("Services to update:", servicesToUpdate.length);
+
+    // Remove services that are no longer needed
+    for (const service of servicesToRemove) {
+      console.log(`Removing service ${service.service_id} from order ${order_id}`);
+      await db.query("DELETE FROM order_services WHERE order_service_id = ?", [service.order_service_id]);
+    }
+
+    // Add new services with "pending" status
+    for (const service of servicesToAdd) {
+      console.log(`Adding new service ${service.service_id} to order ${order_id}`);
+      const price = await getServicePrice(service.service_id);
+      
+      const result = await db.query(
+        `INSERT INTO order_services (order_id, service_id, service_price, service_status, service_completed)
+         VALUES (?, ?, ?, 'pending', 0)`,
+        [Number(order_id), Number(service.service_id), Number(price || 0)]
+      );
+      
       const orderServiceId = result.insertId;
-
-      if (svc.employee_id && !Number.isNaN(Number(svc.employee_id))) {
-        await db.query(insertAssignmentQuery, [
-          orderServiceId,
-          Number(svc.employee_id),
-        ]);
+      
+      if (service.employee_id && !Number.isNaN(Number(service.employee_id))) {
+        await db.query(
+          `INSERT INTO order_service_employee (order_service_id, employee_id, is_primary)
+           VALUES (?, ?, 1)`,
+          [orderServiceId, Number(service.employee_id)]
+        );
       }
     }
 
+    // Update employee assignments for existing services
+    for (const service of servicesToUpdate) {
+      const currentService = currentServiceMap.get(service.service_id);
+      if (currentService && currentService.employee_id !== service.employee_id) {
+        console.log(`Updating employee assignment for service ${service.service_id} from ${currentService.employee_id} to ${service.employee_id}`);
+        
+        if (service.employee_id && !Number.isNaN(Number(service.employee_id))) {
+          // Update existing assignment
+          await db.query(
+            `UPDATE order_service_employee SET employee_id = ? WHERE order_service_id = ?`,
+            [Number(service.employee_id), currentService.order_service_id]
+          );
+        } else {
+          // Remove assignment
+          await db.query(
+            `DELETE FROM order_service_employee WHERE order_service_id = ?`,
+            [currentService.order_service_id]
+          );
+        }
+      }
+    }
+
+    // Recalculate overall order status based on final state
+    const finalStatusQuery = `
+      SELECT COUNT(*) AS total,
+             SUM(CASE WHEN os.service_completed = 1 THEN 1 ELSE 0 END) AS checked,
+             SUM(CASE WHEN COALESCE(os_view.status, os.service_status) = 'completed' THEN 1 ELSE 0 END) AS completed
+      FROM order_services os
+      LEFT JOIN order_status os_view ON os_view.order_service_id = os.order_service_id
+      WHERE os.order_id = ?
+    `;
+    
+    const statusResult = await db.query(finalStatusQuery, [order_id]);
+    const total = Number(statusResult[0]?.total || 0);
+    const checked = Number(statusResult[0]?.checked || 0);
+    const completed = Number(statusResult[0]?.completed || 0);
+    
+    console.log(`Final status calculation for order ${order_id}: total=${total}, checked=${checked}, completed=${completed}`);
+    
+    let newOrderStatus = 'pending';
+    if (total > 0) {
+      if (completed === total) {
+        newOrderStatus = 'completed';
+      } else if (checked > 0 || completed > 0) {
+        newOrderStatus = 'in_progress';
+      } else {
+        newOrderStatus = 'pending';
+      }
+    }
+    
+    // Update overall order status
+    await db.query(`UPDATE orders SET order_status = ? WHERE order_id = ?`, [newOrderStatus, order_id]);
+    
+    // Add status history entry for the overall order status change
+    await db.query(
+      `INSERT INTO order_status_history (order_id, status, changed_by) VALUES (?, ?, ?)`,
+      [order_id, newOrderStatus, 1] // Using employee_id 1 as default for system changes
+    );
+    
+    console.log(`Order ${order_id} overall status set to: ${newOrderStatus}`);
+
     console.log(
-      "Order services (and assignments) updated successfully for order ID:",
+      "Order services updated successfully for order ID:",
       order_id
     );
     return { message: "Order services updated successfully" };
