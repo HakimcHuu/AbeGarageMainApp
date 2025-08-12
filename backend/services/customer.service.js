@@ -189,7 +189,13 @@ async function getCustomer(customerId) {
 // A function to get all vehicles of a specific customer
 async function getVehiclesByCustomerId(customerId) {
     const query = `
-    SELECT * 
+    SELECT 
+        vehicle_id,
+        customer_id,
+        vehicle_make,
+        vehicle_model,
+        vehicle_year,
+        vehicle_license_plate
     FROM customer_vehicle_info 
     WHERE customer_id = ?`;
 

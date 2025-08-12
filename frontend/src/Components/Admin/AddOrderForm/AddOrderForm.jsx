@@ -359,7 +359,7 @@ const AddOrderForm = () => {
                         <td>{vehicle.vehicle_make}</td>
                         <td>{vehicle.vehicle_model}</td>
                         <td>{vehicle.vehicle_year}</td>
-                        <td>{vehicle.vehicle_serial}</td>
+                        <td>{vehicle.vehicle_license_plate}</td>
                         <td>
                           <Button 
                             variant={selectedVehicle?.vehicle_id === vehicle.vehicle_id ? 'primary' : 'outline-primary'}
@@ -495,7 +495,7 @@ const AddOrderForm = () => {
                     <p><strong>Make:</strong> {selectedVehicle.vehicle_make}</p>
                     <p><strong>Model:</strong> {selectedVehicle.vehicle_model}</p>
                     <p><strong>Year:</strong> {selectedVehicle.vehicle_year}</p>
-                    <p><strong>License Plate:</strong> {selectedVehicle.vehicle_serial}</p>
+                    <p><strong>License Plate:</strong> {selectedVehicle.vehicle_license_plate}</p>
                   </Card.Body>
                 </Card>
               </Col>
