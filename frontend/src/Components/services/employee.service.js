@@ -308,19 +308,23 @@ const getEmployeeTasks = async (employee_id, token) => {
 };
 
 // Function to update task status with detailed logging
-const updateTaskStatus = async (task_id, status, token) => {
+const updateTaskStatus = async (taskIdWithPrefix, status, token, taskType = 'service') => {
   try {
-    console.log(`[UpdateTaskStatus] URL: ${api_url}/api/employees/tasks/${task_id}/status`);
+    // Extract the numeric ID from the prefixed taskId
+    const taskId = taskIdWithPrefix.split('_')[1];
+
+    console.log(`[UpdateTaskStatus] URL: ${api_url}/api/employees/tasks/${taskId}/status`);
     console.log(`[UpdateTaskStatus] Token present:`, Boolean(token));
     console.log(`[UpdateTaskStatus] New status to send: ${status}`);
+    console.log(`[UpdateTaskStatus] Task Type: ${taskType}`);
 
-    const response = await fetch(`${api_url}/api/employees/tasks/${task_id}/status`, {
+    const response = await fetch(`${api_url}/api/employees/tasks/${taskId}/status`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
-        "x-access-token": token, // **Changed from Authorization: Bearer to x-access-token for consistency**
+        "x-access-token": token,
       },
-      body: JSON.stringify({ status: Number(status) }), // Ensure it's a number
+      body: JSON.stringify({ status: Number(status), task_type: taskType }), // Include task_type
     });
 
     if (!response.ok) {

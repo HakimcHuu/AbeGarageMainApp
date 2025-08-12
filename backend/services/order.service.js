@@ -71,22 +71,24 @@ const createOrder = async (orderData, orderInfoData, orderServiceData) => {
 
     // Insert the order information into the `order_info` table
     const orderInfoInsertQuery = `
-            INSERT INTO order_info (order_id, order_total_price, additional_request, estimated_completion_date, additional_requests_completed)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO order_info (order_id, order_total_price, additional_request, estimated_completion_date, additional_request_employee_id, additional_request_status)
+            VALUES (?, ?, ?, ?, ?, ?)
         `;
     console.log("Executing order info insert query:", orderInfoInsertQuery, [
       orderId,
       orderInfoData.order_total_price,
       orderInfoData.additional_request,
       orderInfoData.estimated_completion_date,
-      orderInfoData.additional_requests_completed,
+      orderInfoData.additional_request_employee_id,
+      orderInfoData.additional_request_status,
     ]);
     await db.query(orderInfoInsertQuery, [
       orderId,
       orderInfoData.order_total_price,
       orderInfoData.additional_request,
       orderInfoData.estimated_completion_date,
-      orderInfoData.additional_requests_completed,
+      orderInfoData.additional_request_employee_id,
+      orderInfoData.additional_request_status,
     ]);
 
     let totalOrderPrice = 0;
@@ -260,6 +262,10 @@ const getAllOrders = async () => {
                 oi.order_total_price,
                 oi.estimated_completion_date,
                 oi.additional_request,
+                oi.additional_request_employee_id,
+                oi.additional_request_status,
+                are.employee_first_name AS additional_request_employee_first_name,
+                are.employee_last_name AS additional_request_employee_last_name,
                 svc.service_items,
                 agg.checked_count AS checked_count,
                 agg.submitted_count AS submitted_count,
@@ -270,6 +276,7 @@ const getAllOrders = async () => {
             LEFT JOIN customer_vehicle_info v ON o.vehicle_id = v.vehicle_id
             LEFT JOIN employee_info e ON o.employee_id = e.employee_id
             LEFT JOIN order_info oi ON o.order_id = oi.order_id
+            LEFT JOIN employee_info are ON oi.additional_request_employee_id = are.employee_id
             LEFT JOIN (
                 SELECT 
                     os.order_id,
@@ -353,6 +360,10 @@ const getAllOrders = async () => {
         order_total_price: parseFloat(row.order_total_price) || 0,
         estimated_completion_date: row.estimated_completion_date,
         additional_request: row.additional_request || "",
+        additional_request_employee_id: row.additional_request_employee_id || null,
+        additional_request_status: row.additional_request_status || 0,
+        additional_request_employee_first_name: row.additional_request_employee_first_name || null,
+        additional_request_employee_last_name: row.additional_request_employee_last_name || null,
         services,
       };
     });
@@ -399,13 +410,18 @@ const getOrderById = async (orderId) => {
                 e.employee_last_name,
                 oi.order_total_price,
                 oi.estimated_completion_date,
-                oi.additional_request
+                oi.additional_request,
+                oi.additional_request_employee_id,
+                oi.additional_request_status,
+                are.employee_first_name AS additional_request_employee_first_name,
+                are.employee_last_name AS additional_request_employee_last_name
             FROM orders o
             LEFT JOIN customer_info ci ON o.customer_id = ci.customer_id
             LEFT JOIN customer c ON ci.customer_id = c.customer_id
             LEFT JOIN customer_vehicle_info v ON o.vehicle_id = v.vehicle_id
             LEFT JOIN employee_info e ON o.employee_id = e.employee_id
             LEFT JOIN order_info oi ON o.order_id = oi.order_id
+            LEFT JOIN employee_info are ON oi.additional_request_employee_id = are.employee_id
             WHERE o.order_id = ?
             LIMIT 1
         `;
@@ -496,6 +512,10 @@ const getOrderById = async (orderId) => {
       order_total: parseFloat(row.order_total_price) || 0,
       estimated_completion_date: row.estimated_completion_date,
       additional_request: row.additional_request || "",
+      additional_request_employee_id: row.additional_request_employee_id || null,
+      additional_request_status: row.additional_request_status || 'pending', // Ensure it's a string for ENUM
+      additional_request_employee_first_name: row.additional_request_employee_first_name || null,
+      additional_request_employee_last_name: row.additional_request_employee_last_name || null,
       services,
     };
   } catch (error) {
@@ -515,7 +535,7 @@ const getOrderIdFromTask = async (task_id) => {
 async function updateOrder(id, updateData) {
   // Map incoming names to order_info columns
   const additional_request =
-    updateData.additional_request ?? updateData.order_description ?? "";
+    updateData.orderInfoData.additional_request ?? updateData.order_description ?? "";
 
   // Normalize various date shapes to MySQL DATETIME (YYYY-MM-DD HH:MM:SS)
   const toMysqlDateTime = (val) => {
@@ -533,16 +553,20 @@ async function updateOrder(id, updateData) {
   };
 
   const estimated_completion_date = toMysqlDateTime(
-    updateData.estimated_completion_date
+    updateData.orderInfoData.estimated_completion_date
   );
-  const completion_date = toMysqlDateTime(updateData.completion_date);
-  const order_total_price = updateData.order_total_price ?? null;
+  const completion_date = toMysqlDateTime(updateData.orderInfoData.completion_date);
+  const order_total_price = updateData.orderInfoData.order_total_price ?? null;
+  const additional_request_employee_id = updateData.orderInfoData.additional_request_employee_id ?? null;
+  const additional_request_status = updateData.orderInfoData.additional_request_status ?? 'pending';
 
   console.log("Updating order_info for order ID:", id, {
     additional_request,
     estimated_completion_date,
     completion_date,
     order_total_price,
+    additional_request_employee_id,
+    additional_request_status,
   });
 
   // Guard: prevent updates to order_info for cancelled/done orders
@@ -570,7 +594,9 @@ async function updateOrder(id, updateData) {
             additional_request = ?,
             estimated_completion_date = ?,
             completion_date = ?,
-            order_total_price = COALESCE(?, order_total_price)
+            order_total_price = COALESCE(?, order_total_price),
+            additional_request_employee_id = ?,
+            additional_request_status = ?
         WHERE order_id = ?
     `;
   try {
@@ -579,15 +605,93 @@ async function updateOrder(id, updateData) {
       estimated_completion_date,
       completion_date,
       order_total_price,
+      additional_request_employee_id,
+      additional_request_status,
       id,
     ]);
     console.log("Order info updated in DB with result:", result);
-    return { message: "Order updated successfully" };
+
+    // Re-evaluate and update overall order status
+    await recalculateAndSetOrderStatus(id);
+
+    return { message: "Order updated successfully", status: "success" }; // Add status for frontend
   } catch (error) {
     console.error("Error updating order info in DB:", error);
     throw new Error("Failed to update order");
   }
 }
+
+// New function to recalculate and set overall order status
+const recalculateAndSetOrderStatus = async (orderId) => {
+  // --- START: Re-evaluate and update overall order status ---
+  const agg = await db.query(
+    `SELECT
+        COUNT(os.order_service_id) AS total_services,
+        SUM(CASE WHEN os_view.status = 'completed' THEN 1 ELSE 0 END) AS submitted_services,
+        SUM(CASE WHEN os.service_completed = 1 THEN 1 ELSE 0 END) AS checked_services,
+        MAX(oi.additional_request) AS additional_request,
+        MAX(oi.additional_request_status) AS additional_request_status
+     FROM orders o
+     LEFT JOIN order_services os ON o.order_id = os.order_id
+     LEFT JOIN order_status os_view ON os_view.order_service_id = os.order_service_id
+     LEFT JOIN order_info oi ON o.order_id = oi.order_id
+     WHERE o.order_id = ?
+     GROUP BY o.order_id`,
+    [orderId]
+  );
+
+  const totalServices = Number(agg?.[0]?.total_services || 0);
+  const submittedServices = Number(agg?.[0]?.submitted_services || 0);
+  const checkedServices = Number(agg?.[0]?.checked_services || 0);
+  const additionalRequestText = agg?.[0]?.additional_request;
+  const additionalRequestStatusFromDB = agg?.[0]?.additional_request_status;
+
+  const isAdditionalRequestCompleted = !additionalRequestText || additionalRequestStatusFromDB === 'completed';
+  const allServicesCompleted = totalServices === submittedServices;
+  const allTasksCompleted = allServicesCompleted && isAdditionalRequestCompleted;
+
+  // Get current overall order status from the 'orders' table
+  const currentOverallStatusRow = await db.query(`SELECT order_status FROM orders WHERE order_id = ?`, [orderId]);
+  const currentOverallStatus = currentOverallStatusRow[0]?.order_status || 'pending';
+
+  let newOverallOrderStatus = currentOverallStatus;
+  // If order is not locked as 'done' or 'cancelled', recompute status.
+  if (currentOverallStatus !== 'done' && currentOverallStatus !== 'cancelled') {
+    if (allTasksCompleted) {
+      newOverallOrderStatus = 'completed';
+    } else if (checkedServices > 0 || submittedServices > 0 || additionalRequestStatusFromDB === 'in_progress') {
+      newOverallOrderStatus = 'in_progress';
+    } else {
+      newOverallOrderStatus = 'pending';
+    }
+  }
+
+  console.log(`[recalculateAndSetOrderStatus Debug] Order ID: ${orderId}`);
+  console.log(`[recalculateAndSetOrderStatus Debug] totalServices: ${totalServices}`);
+  console.log(`[recalculateAndSetOrderStatus Debug] submittedServices: ${submittedServices}`);
+  console.log(`[recalculateAndSetOrderStatus Debug] checkedServices: ${checkedServices}`);
+  console.log(`[recalculateAndSetOrderStatus Debug] additionalRequestText: ${additionalRequestText}`);
+  console.log(`[recalculateAndSetOrderStatus Debug] additionalRequestStatusFromDB: ${additionalRequestStatusFromDB}`);
+  console.log(`[recalculateAndSetOrderStatus Debug] isAdditionalRequestCompleted: ${isAdditionalRequestCompleted}`);
+  console.log(`[recalculateAndSetOrderStatus Debug] allServicesCompleted: ${allServicesCompleted}`);
+  console.log(`[recalculateAndSetOrderStatus Debug] allTasksCompleted: ${allTasksCompleted}`);
+  console.log(`[recalculateAndSetOrderStatus Debug] currentOverallStatus: ${currentOverallStatus}`);
+  console.log(`[recalculateAndSetOrderStatus Debug] newOverallOrderStatus (calculated): ${newOverallOrderStatus}`);
+
+  // Update the overall order record if status changed
+  if (newOverallOrderStatus !== currentOverallStatus) {
+    const updateOrderResult = await db.query(`UPDATE orders SET order_status = ? WHERE order_id = ?`, [newOverallOrderStatus, orderId]);
+    console.log(`[recalculateAndSetOrderStatus Debug] UPDATE orders result for order ID ${orderId}:`, updateOrderResult);
+    await db.query(
+      `INSERT INTO order_status_history (order_id, status, changed_by) VALUES (?, ?, ?)`,
+      [orderId, newOverallOrderStatus, 1] // Using employee_id 1 as default for system changes from admin panel
+    );
+    console.log(`[recalculateAndSetOrderStatus] Overall order_id ${orderId} status updated to: ${newOverallOrderStatus}`);
+  } else {
+    console.log(`[recalculateAndSetOrderStatus] Overall order_id ${orderId} status remains: ${newOverallOrderStatus}`);
+  }
+  // --- END: Re-evaluate and update overall order status ---
+};
 
 const updateOrderStatus = async (orderId, status, changedByEmployeeId) => {
   // Persist status change in history table using enum strings
@@ -625,20 +729,35 @@ const updateOrderStatus = async (orderId, status, changedByEmployeeId) => {
     statusString === "done"
   ) {
     const svcAgg = await db.query(
-      `SELECT COUNT(*) AS total, SUM(CASE WHEN COALESCE(os_view.status, os.service_status) = 'completed' THEN 1 ELSE 0 END) AS completed
+      `SELECT COUNT(*) AS total_services, SUM(CASE WHEN COALESCE(os_view.status, os.service_status) = 'completed' THEN 1 ELSE 0 END) AS completed_services,
+              oi.additional_request, oi.additional_request_status
        FROM order_services os
        LEFT JOIN order_status os_view ON os_view.order_service_id = os.order_service_id
-       WHERE os.order_id = ?`,
+       LEFT JOIN order_info oi ON os.order_id = oi.order_id
+       WHERE os.order_id = ?
+       GROUP BY oi.additional_request, oi.additional_request_status`,
       [orderId]
     );
-    const total = Number(svcAgg?.[0]?.total || 0);
-    const completed = Number(svcAgg?.[0]?.completed || 0);
-    if (total === 0 || completed < total) {
-      // Block transition until every employee's assigned tasks are completed and submitted
+    const totalServices = Number(svcAgg?.[0]?.total_services || 0);
+    const completedServices = Number(svcAgg?.[0]?.completed_services || 0);
+    const additionalRequest = svcAgg?.[0]?.additional_request;
+    const additionalRequestStatus = Number(svcAgg?.[0]?.additional_request_status || 0);
+
+    const isAdditionalRequestCompleted = !additionalRequest || additionalRequestStatus === 2; // 2 means completed
+
+    if (totalServices === 0 && !additionalRequest) {
+      // No services and no additional request, allow transition
+    } else if (totalServices > 0 && completedServices < totalServices) {
       throw new Error(
         "Cannot update status to '" +
           statusString +
           "' until all assigned services are completed and submitted by their employees."
+      );
+    } else if (additionalRequest && !isAdditionalRequestCompleted) {
+      throw new Error(
+        "Cannot update status to '" +
+          statusString +
+          "' until the additional request is completed."
       );
     }
   }
@@ -812,56 +931,8 @@ async function updateOrderServices(order_id, services) {
       }
     }
 
-    // Check current order status before recalculating
-    const currentOrderStatusQuery = `SELECT order_status FROM orders WHERE order_id = ?`;
-    const currentOrderStatusResult = await db.query(currentOrderStatusQuery, [order_id]);
-    const currentOrderStatus = currentOrderStatusResult[0]?.order_status || 'pending';
-    
-    // If order is cancelled, don't recalculate status - preserve the cancelled state
-    if (currentOrderStatus === 'cancelled') {
-      console.log(`Order ${order_id} is cancelled - preserving cancelled status`);
-    } else {
-      // Recalculate overall order status based on final state
-      const finalStatusQuery = `
-        SELECT COUNT(*) AS total,
-               SUM(CASE WHEN os.service_completed = 1 THEN 1 ELSE 0 END) AS checked,
-               SUM(CASE WHEN COALESCE(os_view.status, os.service_status) = 'completed' THEN 1 ELSE 0 END) AS completed
-        FROM order_services os
-        LEFT JOIN order_status os_view ON os_view.order_service_id = os.order_service_id
-        WHERE os.order_id = ?
-      `;
-      
-      const statusResult = await db.query(finalStatusQuery, [order_id]);
-      const total = Number(statusResult[0]?.total || 0);
-      const checked = Number(statusResult[0]?.checked || 0);
-      const completed = Number(statusResult[0]?.completed || 0);
-      
-      console.log(`Final status calculation for order ${order_id}: total=${total}, checked=${checked}, completed=${completed}`);
-      
-      let newOrderStatus = 'pending';
-      if (total > 0) {
-        if (completed === total) {
-          newOrderStatus = 'completed';
-        } else if (checked > 0 || completed > 0) {
-          newOrderStatus = 'in_progress';
-        } else {
-          newOrderStatus = 'pending';
-        }
-      }
-      
-      // Update overall order status only if it's not cancelled
-      if (newOrderStatus !== currentOrderStatus) {
-        await db.query(`UPDATE orders SET order_status = ? WHERE order_id = ?`, [newOrderStatus, order_id]);
-        
-        // Add status history entry for the overall order status change
-        await db.query(
-          `INSERT INTO order_status_history (order_id, status, changed_by) VALUES (?, ?, ?)`,
-          [order_id, newOrderStatus, 1] // Using employee_id 1 as default for system changes
-        );
-        
-        console.log(`Order ${order_id} overall status set to: ${newOrderStatus}`);
-      }
-    }
+    // Recalculate and set overall order status after services are updated
+    await recalculateAndSetOrderStatus(order_id);
 
     console.log(
       "Order services updated successfully for order ID:",

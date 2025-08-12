@@ -177,13 +177,13 @@ CREATE TABLE IF NOT EXISTS `order_info` (
   `additional_request` TEXT,
   `notes_for_internal_use` TEXT,
   `notes_for_customer` TEXT,
-  `additional_requests_completed` BOOLEAN DEFAULT FALSE,
+  `additional_request_employee_id` INT(11) DEFAULT NULL,
+  `additional_request_status` ENUM('pending', 'in_progress', 'completed', 'cancelled') DEFAULT 'pending',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (order_info_id),
-  FOREIGN KEY (order_id) REFERENCES orders(order_id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
+  FOREIGN KEY (order_id) REFERENCES orders(order_id) ON DELETE CASCADE,
+  FOREIGN KEY (additional_request_employee_id) REFERENCES employee(employee_id) ON DELETE SET NULL
 CREATE TABLE IF NOT EXISTS `order_services` (
   `order_service_id` int(11) NOT NULL AUTO_INCREMENT,
   `order_id` int(11) NOT NULL,

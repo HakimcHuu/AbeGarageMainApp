@@ -279,14 +279,15 @@ const updateOrder = async ({ orderId, orderInfoData, orderServiceData }) => {
         'Authorization': `Bearer ${localStorage.getItem('employee_token')}`,
       },
       body: JSON.stringify({
-        // Map to backend expectations; it will update order_info and rebuild services
-        additional_request: orderInfoData?.additional_request ?? '',
-        order_total_price: orderInfoData?.order_total_price ?? null,
-        estimated_completion_date: orderInfoData?.estimated_completion_date ?? null,
-        completion_date: null,
-        order_services: Array.isArray(orderServiceData)
-          ? orderServiceData
-          : [],
+        orderInfoData: {
+          additional_request: orderInfoData?.additional_request ?? '',
+          order_total_price: orderInfoData?.order_total_price ?? null,
+          estimated_completion_date: orderInfoData?.estimated_completion_date ?? null,
+          completion_date: null,
+          additional_request_employee_id: orderInfoData?.additional_request_employee_id ?? null,
+          additional_request_status: orderInfoData?.additional_request_status ?? 'pending'
+        },
+        order_services: Array.isArray(orderServiceData) ? orderServiceData : [],
       }),
     });
 

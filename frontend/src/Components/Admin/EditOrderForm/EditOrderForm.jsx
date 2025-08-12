@@ -27,7 +27,10 @@ const EditOrderForm = () => {
   const [selectedServices, setSelectedServices] = useState([]);
   const [serviceAssignments, setServiceAssignments] = useState([]);
   const [employees, setEmployees] = useState([]);
+  const ADDITIONAL_REQUEST_SERVICE_ID = -1; // Unique ID for additional requests
   const [additionalRequest, setAdditionalRequest] = useState("");
+  const [additionalRequestEmployeeId, setAdditionalRequestEmployeeId] = useState(null);
+  const [additionalRequestStatus, setAdditionalRequestStatus] = useState('pending'); // ENUM: 'pending', 'in_progress', 'completed', 'cancelled'
   const [orderPrice, setOrderPrice] = useState("");
   const [estimatedCompletionDate, setEstimatedCompletionDate] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -44,7 +47,9 @@ const EditOrderForm = () => {
     const basicFieldsChanged = 
       currentData.order_total_price !== originalData.order_total_price ||
       currentData.additional_request !== originalData.additional_request ||
-      currentData.estimated_completion_date !== originalData.estimated_completion_date;
+      currentData.estimated_completion_date !== originalData.estimated_completion_date ||
+      currentData.additional_request_employee_id !== originalData.additional_request_employee_id ||
+      currentData.additional_request_status !== originalData.additional_request_status;
     
     if (basicFieldsChanged) return true;
     
@@ -85,6 +90,8 @@ const EditOrderForm = () => {
         order_total_price: data.order_total_price || "",
         additional_request: data.additional_request || "",
         estimated_completion_date: formatDateForInput(data.estimated_completion_date),
+        additional_request_employee_id: data.additional_request_employee_id || null,
+        additional_request_status: data.additional_request_status || 'pending', // Ensure it's a string for ENUM
         services: (data.services || data.selectedServices || []).map(s => {
           let employeeId = null;
           
@@ -126,6 +133,8 @@ const EditOrderForm = () => {
       });
 
       setAdditionalRequest(data.additional_request || "");
+      setAdditionalRequestEmployeeId(data.additional_request_employee_id || null);
+      setAdditionalRequestStatus(data.additional_request_status || 'pending'); // Ensure it's a string for ENUM
       setOrderPrice(data.order_total_price || "");
       setEstimatedCompletionDate(formatDateForInput(data.estimated_completion_date));
 
@@ -136,6 +145,7 @@ const EditOrderForm = () => {
           service_id: service.service_id,
           service_name: service.service_name || `Service #${service.service_id}`,
           service_completed: service.service_completed || 0,
+          service_status: service.service_status || 0,
         }));
         setSelectedServices(formattedServices);
         
@@ -175,7 +185,13 @@ const EditOrderForm = () => {
         if (routeOrderId) {
           const full = await Service.getOrderDetails(routeOrderId);
           console.log("Loaded full order details:", full);
-          initFromData({ ...full, order_id: routeOrderId, selectedServices: full.services || [] });
+          initFromData({ 
+            ...full, 
+            order_id: routeOrderId, 
+            selectedServices: full.services || [],
+            additional_request_employee_id: full.additional_request_employee_id,
+            additional_request_status: full.additional_request_status,
+          });
           if (typeof full.order_status === 'number') setCurrentStatus(Number(full.order_status));
         }
       } catch (e) {
@@ -214,18 +230,21 @@ const EditOrderForm = () => {
       order_total_price: orderPrice,
       additional_request: additionalRequest,
       estimated_completion_date: estimatedCompletionDate,
+      additional_request_employee_id: additionalRequestEmployeeId,
+      additional_request_status: additionalRequestStatus,
       services: serviceAssignments
     };
     
     const changed = checkForChanges(currentData, initialData);
     setHasChanges(changed);
-  }, [orderPrice, additionalRequest, estimatedCompletionDate, serviceAssignments, initialData]);
+  }, [orderPrice, additionalRequest, estimatedCompletionDate, additionalRequestEmployeeId, additionalRequestStatus, serviceAssignments, initialData]);
 
   const handleSelectServices = (services) => {
     const formattedServices = services.map((service) => ({
       service_id: service.service_id,
       service_name: service.service_name,
       service_completed: 0,
+      service_status: 0, // Default to pending
     }));
     setSelectedServices(formattedServices);
     
@@ -238,13 +257,17 @@ const EditOrderForm = () => {
   };
 
   const handleAssignEmployeeToService = (serviceId, employeeId) => {
-    setServiceAssignments(prev => 
-      prev.map(assignment => 
-        assignment.service_id === serviceId 
-          ? { ...assignment, employee_id: employeeId || null }
-          : assignment
-      )
-    );
+    if (serviceId === ADDITIONAL_REQUEST_SERVICE_ID) {
+      setAdditionalRequestEmployeeId(employeeId || null);
+    } else {
+      setServiceAssignments(prev => 
+        prev.map(assignment => 
+          assignment.service_id === serviceId 
+            ? { ...assignment, employee_id: employeeId || null }
+            : assignment
+        )
+      );
+    }
   };
 
   const handleUpdateOrder = async () => {
@@ -254,8 +277,17 @@ const EditOrderForm = () => {
         order_total_price: Number(orderPrice) || 0,
         additional_request: additionalRequest,
         estimated_completion_date: estimatedCompletionDate,
+        additional_request_employee_id: additionalRequestEmployeeId,
+        additional_request_status: additionalRequestStatus, // Default to current status
         services: serviceAssignments
       };
+
+      // Logic to reset additional_request_status if additional_request text is changed
+      let updatedAdditionalRequestStatus = additionalRequestStatus;
+      if (initialData && initialData.additional_request !== additionalRequest) {
+        updatedAdditionalRequestStatus = 'pending';
+        console.log("Additional request text changed, resetting status to 'pending'.");
+      }
 
       if (!hasChanges) {
         alert("No changes were made to save. The order is already up to date.");
@@ -276,7 +308,10 @@ const EditOrderForm = () => {
         order_total_price: currentData.order_total_price,
         additional_request: currentData.additional_request,
         estimated_completion_date: currentData.estimated_completion_date,
+        additional_request_employee_id: currentData.additional_request_employee_id,
+        additional_request_status: updatedAdditionalRequestStatus, // Use the potentially updated status
       };
+      console.log("Sending orderInfoData to backend:", orderInfoData); // Add this log
 
       const idToUpdate = orderData?.order_id || routeOrderId;
       const resp = await Service.updateOrder({
@@ -291,7 +326,9 @@ const EditOrderForm = () => {
       
       // Show success message and navigate back
       alert("Order updated successfully!");
-      navigate(`/admin/orders/${idToUpdate}`);
+      // Force a full page reload to ensure all data is fresh
+      window.location.reload(); 
+      // navigate(`/admin/orders/${idToUpdate}`); // Removed, as reload handles navigation
     } catch (err) {
       console.error("Error updating the order:", err);
       alert("Failed to update order. Please try again.");
@@ -444,6 +481,30 @@ const EditOrderForm = () => {
                   </div>
                 </div>
               ))}
+              {additionalRequest && (
+                <div 
+                  key={ADDITIONAL_REQUEST_SERVICE_ID} 
+                  className="assign-row"
+                  data-label="Service: Additional Requests"
+                >
+                  <div className="service-name">Additional Requests</div>
+                  <div className="assign-control">
+                    <select
+                      value={additionalRequestEmployeeId || ''}
+                      onChange={(e) => handleAssignEmployeeToService(ADDITIONAL_REQUEST_SERVICE_ID, e.target.value)}
+                      className="assign-select"
+                      disabled={!isEditable}
+                    >
+                      <option value="">Unassigned</option>
+                      {employees.map(emp => (
+                        <option key={emp.employee_id} value={emp.employee_id}>
+                          {emp.employee_first_name} {emp.employee_last_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

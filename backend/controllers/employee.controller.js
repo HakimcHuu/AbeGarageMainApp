@@ -453,10 +453,10 @@ const getEmployeeTasks = async (req, res) => {
 const updateTaskStatus = async (req, res) => {
     try {
         const { task_id } = req.params;
-        const { status } = req.body;
+        const { status, task_type } = req.body; // Extract task_type from req.body
 
         // Log incoming request values
-        console.log(`[UpdateTaskStatus Controller] Received request with Task ID: ${task_id}, Status: ${status}`);
+        console.log(`[UpdateTaskStatus Controller] Received request with Task ID: ${task_id}, Status: ${status}, Task Type: ${task_type}`);
 
         // Ensure status is parsed as a number
         const parsedStatus = Number(status); // Convert status to a number
@@ -467,9 +467,9 @@ const updateTaskStatus = async (req, res) => {
             return res.status(400).json({ message: "Invalid status value" });
         }
 
-        // Proceed with updating the task status
+        // Proceed with updating the task status, passing task_type
         const changedBy = req.employee_id || null; // from verifyToken
-        const result = await employeeService.updateTaskStatus(task_id, parsedStatus, changedBy);
+        const result = await employeeService.updateTaskStatus(task_id, parsedStatus, changedBy, task_type); // Pass task_type
         console.log(`[UpdateTaskStatus Controller] Task ID: ${task_id} status updated successfully to ${parsedStatus}`);
         res.status(200).json({ message: "Task status updated successfully" });
 

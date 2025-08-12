@@ -59,13 +59,21 @@ const ServiceSelection = ({ onSelectServices, selectedServices = [], disabled = 
   }, [selectedServices, services]);
 
   const handleToggle = (service) => {
-    if (disabled) return;
+    if (disabled) {
+      console.log("Service selection is disabled.");
+      return;
+    }
     let updated;
     const serviceId = Number(service.service_id);
+    console.log("Toggling service:", service.service_name, "ID:", serviceId);
+    console.log("Current selectedIds:", selectedIds);
+
     if (selectedIds.includes(serviceId)) {
       updated = selectedIds.filter((id) => id !== serviceId);
+      console.log("Deselecting. New selectedIds:", updated);
     } else {
       updated = [...selectedIds, serviceId];
+      console.log("Selecting. New selectedIds:", updated);
     }
     setSelectedIds(updated);
 
@@ -74,6 +82,7 @@ const ServiceSelection = ({ onSelectServices, selectedServices = [], disabled = 
       .filter((s) => updated.includes(s.service_id))
       .map((s) => ({ service_id: s.service_id, service_name: s.service_name }));
 
+    console.log("Calling onSelectServices with:", selectedObjects);
     onSelectServices(selectedObjects);
   };
 

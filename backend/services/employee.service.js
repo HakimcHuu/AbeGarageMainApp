@@ -567,14 +567,13 @@ async function deleteEmployee(employeeId) {
 const getEmployeeTasks = async (employee_id) => {
   const query = `
     SELECT
-        ose.order_service_employee_id,
+        CONCAT('service_', os.order_service_id) AS task_id, -- Prefix service tasks
         os.service_id,
         cs.service_name,
         cs.service_description,
         os.service_completed,
         o.order_id,
-        os.order_service_id,
-        -- Latest status for this specific service from the order_status view (string -> numeric mapping)
+        'service' AS task_type,
         CASE os_view.status
             WHEN 'pending' THEN 1
             WHEN 'in_progress' THEN 2
@@ -582,7 +581,6 @@ const getEmployeeTasks = async (employee_id) => {
             WHEN 'cancelled' THEN 4
             ELSE 1
         END AS order_status,
-        -- Overall order status (string -> numeric mapping)
         CASE o.order_status
             WHEN 'pending' THEN 1
             WHEN 'in_progress' THEN 2
@@ -611,12 +609,60 @@ const getEmployeeTasks = async (employee_id) => {
     INNER JOIN customer_info ci ON c.customer_id = ci.customer_id   
     INNER JOIN customer_vehicle_info v ON o.vehicle_id = v.vehicle_id  
     LEFT JOIN order_status os_view ON os_view.order_service_id = os.order_service_id
-    WHERE ose.employee_id = ?;
+    WHERE ose.employee_id = ?
+
+    UNION ALL
+
+    SELECT
+        CONCAT('ar_', oi.order_info_id) AS task_id, -- Prefix additional request tasks
+        NULL AS service_id,
+        'Additional Request' AS service_name,
+        oi.additional_request AS service_description,
+        CASE oi.additional_request_status
+            WHEN 'in_progress' THEN 1
+            WHEN 'completed' THEN 1
+            ELSE 0
+        END AS service_completed,
+        o.order_id,
+        'additional_request' AS task_type,
+        CASE oi.additional_request_status
+            WHEN 'pending' THEN 1
+            WHEN 'in_progress' THEN 2
+            WHEN 'completed' THEN 3
+            WHEN 'cancelled' THEN 4
+            ELSE 1
+        END AS order_status,
+        CASE o.order_status
+            WHEN 'pending' THEN 1
+            WHEN 'in_progress' THEN 2
+            WHEN 'completed' THEN 3
+            WHEN 'ready_for_pickup' THEN 4
+            WHEN 'done' THEN 5
+            WHEN 'cancelled' THEN 6
+            ELSE 1
+        END AS overall_order_status,
+        c.customer_id,
+        c.customer_email,  
+        ci.customer_first_name,
+        ci.customer_last_name,
+        ci.customer_phone,
+        v.vehicle_id,
+        v.vehicle_make,
+        v.vehicle_model,
+        v.vehicle_year,
+        v.vehicle_mileage,
+        v.vehicle_license_plate
+    FROM order_info oi
+    INNER JOIN orders o ON oi.order_id = o.order_id
+    INNER JOIN customer c ON o.customer_id = c.customer_id   
+    INNER JOIN customer_info ci ON c.customer_id = ci.customer_id   
+    INNER JOIN customer_vehicle_info v ON o.vehicle_id = v.vehicle_id  
+    WHERE oi.additional_request_employee_id = ? AND oi.additional_request IS NOT NULL;
   `;
 
   try {
     console.log(`[getEmployeeTasks] Executing query for employee_id: ${employee_id}`);
-    const rows = await conn.query(query, [employee_id]);
+    const rows = await conn.query(query, [employee_id, employee_id]); // Pass employee_id twice for UNION ALL
     console.log(`[getEmployeeTasks] Rows fetched for employee_id: ${employee_id}: ${rows.length} tasks`);
 
     // Return an empty array if no tasks are found, rather than throwing an error.
@@ -629,102 +675,161 @@ const getEmployeeTasks = async (employee_id) => {
 };
 
 // Update task status (service and overall order)
-const updateTaskStatus = async (order_service_id, newStatus, changedByEmployeeId = null) => {
+const updateTaskStatus = async (taskId, newStatus, changedByEmployeeId = null, taskType = 'service') => {
   try {
-    console.log(`[updateTaskStatus] Updating task (order_service_id: ${order_service_id}) to status: ${newStatus}`);
+    console.log(`[updateTaskStatus] Received call for Task ID: ${taskId}, New Status: ${newStatus}, Task Type: ${taskType}`);
+    console.log(`[updateTaskStatus] Updating task (ID: ${taskId}, Type: ${taskType}) to status: ${newStatus}`);
 
     // Ensure newStatus is valid (1 = Received, 2 = In Progress, 3 = Completed)
     if (![1, 2, 3].includes(newStatus)) {
       throw new Error(`Invalid status value: ${newStatus}. Must be 1, 2, or 3.`);
     }
 
-    // Get the order id and current order status
-    const getOrderIdAndStatusQuery = `SELECT order_id FROM order_services WHERE order_service_id = ?`;
-    const orderRow = await conn.query(getOrderIdAndStatusQuery, [order_service_id]);
-    const orderId = orderRow[0]?.order_id;
-    if (!orderId) {
-      throw new Error(`No order found for order_service_id: ${order_service_id}`);
-    }
-    const getOrderStatusQuery = `SELECT order_status FROM orders WHERE order_id = ?`;
-    const orderStatusRow = await conn.query(getOrderStatusQuery, [orderId]);
-    const currentOrderStatus = orderStatusRow[0]?.order_status;
+    let orderId;
+    let currentOrderStatus;
 
-    // Prevent changes if order is 'done' or 'cancelled'
-    if (currentOrderStatus === 'done') {
-      throw new Error('Order is locked (Done). No further changes allowed.');
-    }
-    if (currentOrderStatus === 'cancelled') {
-      throw new Error('Order is cancelled. No further changes allowed.');
-    }
+    if (taskType === 'service') {
+      // Get the order id and current order status for a service task
+      const getOrderIdAndStatusQuery = `SELECT order_id FROM order_services WHERE order_service_id = ?`;
+      const orderRow = await conn.query(getOrderIdAndStatusQuery, [taskId]);
+      orderId = orderRow[0]?.order_id;
+      if (!orderId) {
+        throw new Error(`No order found for order_service_id: ${taskId}`);
+      }
+      const getOrderStatusQuery = `SELECT order_status FROM orders WHERE order_id = ?`;
+      const orderStatusRow = await conn.query(getOrderStatusQuery, [orderId]);
+      currentOrderStatus = orderStatusRow[0]?.order_status;
 
-    // 1. Update `service_completed` in `order_services`
-    // Interpret status: 1=unchecked(received), 2=checked (in progress), 3=submitted (completed)
-    const serviceCompletedValue = (newStatus === 1) ? 0 : 1;
-    const updateServiceCompletedQuery = `
-      UPDATE order_services
-      SET service_completed = ?
-      WHERE order_service_id = ?
-    `;
-    const resultServiceUpdate = await conn.query(updateServiceCompletedQuery, [serviceCompletedValue, order_service_id]);
-    if (resultServiceUpdate.affectedRows === 0) {
-      throw new Error(`No task found with order_service_id: ${order_service_id} to update service_completed.`);
-    }
+      // Prevent changes if order is 'done' or 'cancelled'
+      if (currentOrderStatus === 'done') {
+        throw new Error('Order is locked (Done). No further changes allowed.');
+      }
+      if (currentOrderStatus === 'cancelled') {
+        throw new Error('Order is cancelled. No further changes allowed.');
+      }
 
-    // 2. Insert into `order_status_history` for the specific order_service_id
-    // Map: 1 -> pending, 2 -> in_progress (work started), 3 -> completed (explicit submission)
-    const statusString = newStatus === 3 ? 'completed' : newStatus === 2 ? 'in_progress' : 'pending';
-    const insertHistoryQuery = `
-      INSERT INTO order_status_history (order_id, order_service_id, status, changed_by)
-      VALUES (?, ?, ?, ?)
-    `;
-    await conn.query(insertHistoryQuery, [orderId, order_service_id, statusString, changedByEmployeeId]);
+      // 1. Update `service_completed` in `order_services`
+      // Interpret status: 1=unchecked(received), 2=checked (in progress), 3=submitted (completed)
+      const serviceCompletedValue = (newStatus === 1) ? 0 : 1;
+      const updateServiceCompletedQuery = `
+        UPDATE order_services
+        SET service_completed = ?
+        WHERE order_service_id = ?
+      `;
+      const resultServiceUpdate = await conn.query(updateServiceCompletedQuery, [serviceCompletedValue, taskId]);
+      if (resultServiceUpdate.affectedRows === 0) {
+        throw new Error(`No service task found with ID: ${taskId} to update service_completed.`);
+      }
+
+      // 2. Insert into `order_status_history` for the specific order_service_id
+      // Map: 1 -> pending, 2 -> in_progress (work started), 3 -> completed (explicit submission)
+      const statusString = newStatus === 3 ? 'completed' : newStatus === 2 ? 'in_progress' : 'pending';
+      const insertHistoryQuery = `
+        INSERT INTO order_status_history (order_id, order_service_id, status, changed_by)
+        VALUES (?, ?, ?, ?)
+      `;
+      await conn.query(insertHistoryQuery, [orderId, taskId, statusString, changedByEmployeeId]);
+
+    } else if (taskType === 'additional_request') {
+      // Get the order id and current order status for an additional request task
+      const getOrderIdAndStatusQuery = `SELECT order_id FROM order_info WHERE order_info_id = ?`;
+      const orderRow = await conn.query(getOrderIdAndStatusQuery, [taskId]);
+      orderId = orderRow[0]?.order_id;
+      if (!orderId) {
+        throw new Error(`No order found for order_info_id: ${taskId}`);
+      }
+      const getOrderStatusQuery = `SELECT order_status FROM orders WHERE order_id = ?`;
+      const orderStatusRow = await conn.query(getOrderStatusQuery, [orderId]);
+      currentOrderStatus = orderStatusRow[0]?.order_status;
+
+      // Prevent changes if order is 'done' or 'cancelled'
+      if (currentOrderStatus === 'done') {
+        throw new Error('Order is locked (Done). No further changes allowed.');
+      }
+      if (currentOrderStatus === 'cancelled') {
+        throw new Error('Order is cancelled. No further changes allowed.');
+      }
+
+      // Update `additional_request_status` in `order_info`
+      // Map: 1 -> pending, 2 -> in_progress, 3 -> completed
+      const statusString = newStatus === 3 ? 'completed' : newStatus === 2 ? 'in_progress' : 'pending';
+      console.log(`[updateTaskStatus - Additional Request] Setting additional_request_status to: ${statusString} for task ID: ${taskId}`);
+      const updateAdditionalRequestQuery = `
+        UPDATE order_info
+        SET additional_request_status = ?
+        WHERE order_info_id = ?
+      `;
+      const resultAdditionalRequestUpdate = await conn.query(updateAdditionalRequestQuery, [statusString, taskId]);
+      console.log(`[updateTaskStatus - Additional Request] Update result for task ID ${taskId}:`, resultAdditionalRequestUpdate);
+      if (resultAdditionalRequestUpdate.affectedRows === 0) {
+        throw new Error(`No additional request task found with ID: ${taskId} to update status.`);
+      }
+
+      // Insert into `order_status_history` for the overall order (since additional requests don't have order_service_id)
+      const insertHistoryQuery = `
+        INSERT INTO order_status_history (order_id, status, changed_by)
+        VALUES (?, ?, ?)
+      `;
+      await conn.query(insertHistoryQuery, [orderId, statusString, changedByEmployeeId]);
+
+    } else {
+      throw new Error(`Unknown task type: ${taskType}`);
+    }
 
     // 3. Re-evaluate and update the overall `orders.order_status` and history based on submissions
+    // This logic needs to consider both services and additional requests
     const agg = await conn.query(
-      `SELECT COUNT(*) AS total,
-              SUM(CASE WHEN os_view.status = 'completed' THEN 1 ELSE 0 END) AS submitted,
-              SUM(CASE WHEN os.service_completed = 1 THEN 1 ELSE 0 END) AS checked
-       FROM order_services os
+      `SELECT 
+          COUNT(os.order_service_id) AS total_services,
+          SUM(CASE WHEN os_view.status = 'completed' THEN 1 ELSE 0 END) AS submitted_services,
+          SUM(CASE WHEN os.service_completed = 1 THEN 1 ELSE 0 END) AS checked_services,
+          oi.additional_request,
+          oi.additional_request_status
+       FROM orders o
+       LEFT JOIN order_services os ON o.order_id = os.order_id
        LEFT JOIN order_status os_view ON os_view.order_service_id = os.order_service_id
-       WHERE os.order_id = ?`,
+       LEFT JOIN order_info oi ON o.order_id = oi.order_id
+       WHERE o.order_id = ?
+       GROUP BY oi.additional_request, oi.additional_request_status`,
       [orderId]
     );
-    const total = Number(agg?.[0]?.total || 0);
-    const submitted = Number(agg?.[0]?.submitted || 0);
-    const checked = Number(agg?.[0]?.checked || 0);
 
-    let newOrderStatus = currentOrderStatus;
+    const totalServices = Number(agg?.[0]?.total_services || 0);
+    const submittedServices = Number(agg?.[0]?.submitted_services || 0);
+    const checkedServices = Number(agg?.[0]?.checked_services || 0);
+    const additionalRequestText = agg?.[0]?.additional_request;
+    const additionalRequestStatus = agg?.[0]?.additional_request_status;
+
+    const isAdditionalRequestCompleted = !additionalRequestText || additionalRequestStatus === 'completed';
+    const allServicesCompleted = totalServices === submittedServices;
+    const allTasksCompleted = allServicesCompleted && isAdditionalRequestCompleted;
+
+    let newOverallOrderStatus = currentOrderStatus;
     // If order is not locked as 'done' or 'cancelled', recompute status.
     if (currentOrderStatus !== 'done' && currentOrderStatus !== 'cancelled') {
-      if (newStatus === 1) {
-        // Employee unchecked a task: if no tasks are checked/submitted after this action, mark overall as 'pending' (Received);
-        // otherwise, it's still 'in_progress'.
-        newOrderStatus = (checked === 0 && submitted === 0) ? 'pending' : 'in_progress';
+      if (allTasksCompleted) {
+        newOverallOrderStatus = 'completed';
+      } else if (checkedServices > 0 || submittedServices > 0 || additionalRequestStatus === 'in_progress') {
+        newOverallOrderStatus = 'in_progress';
       } else {
-        if (total > 0 && submitted === total) {
-          newOrderStatus = 'completed';
-        } else if (checked > 0 || submitted > 0) {
-          newOrderStatus = 'in_progress';
-        } else {
-          newOrderStatus = 'pending';
-        }
+        newOverallOrderStatus = 'pending';
       }
     }
 
     // Update the overall order record if status changed
-    if (newOrderStatus !== currentOrderStatus) {
-      await conn.query(`UPDATE orders SET order_status = ? WHERE order_id = ?`, [newOrderStatus, orderId]);
+    if (newOverallOrderStatus !== currentOrderStatus) {
+      await conn.query(`UPDATE orders SET order_status = ? WHERE order_id = ?`, [newOverallOrderStatus, orderId]);
       await conn.query(
         `INSERT INTO order_status_history (order_id, status, changed_by) VALUES (?, ?, ?)`,
-        [orderId, newOrderStatus, changedByEmployeeId]
+        [orderId, newOverallOrderStatus, changedByEmployeeId]
       );
     }
 
-    console.log(`[updateTaskStatus] Overall order_id ${orderId} status updated to: ${newOrderStatus}`);
+    console.log(`[updateTaskStatus] Overall order_id ${orderId} status updated to: ${newOverallOrderStatus}`);
     return { success: true, message: 'Task status updated successfully, and overall order status re-evaluated.' };
 
   } catch (error) {
-    console.error(`[updateTaskStatus] Error updating task status for order_service_id ${order_service_id}:`, error);
+    console.error(`[updateTaskStatus] Error updating task status for ID ${taskId} (Type: ${taskType}):`, error);
     throw error;
   }
 };

@@ -139,7 +139,6 @@ const AddOrderForm = () => {
       !selectedVehicle ||
       !orderPrice ||
       !estimatedCompletionDate ||
-      !additionalRequest ||
       selectedServices.length === 0 ||
       serviceAssignments.length === 0
     ) {
@@ -167,7 +166,8 @@ const AddOrderForm = () => {
         order_total_price: orderPrice,
         additional_request: additionalRequest,
         estimated_completion_date: estimatedCompletionDate,
-        additional_requests_completed: 0,
+        additional_request_employee_id: null, // Not collected in UI, set to null
+        additional_request_status: 'pending', // Default to 'pending' for ENUM type
       };
     
       const orderServiceData = serviceAssignments.map((assignment) => ({
@@ -411,7 +411,10 @@ const AddOrderForm = () => {
             <h5 className="mb-0"><FaClipboard className="me-2" /> Select Services</h5>
           </Card.Header>
           <Card.Body>
-            <ServiceSelection onSelectServices={handleSelectServices} />
+            <ServiceSelection 
+              onSelectServices={handleSelectServices} 
+              selectedServices={selectedServices} 
+            />
             
             {selectedServices.length > 0 && (
               <div className="mt-4">

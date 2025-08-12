@@ -137,6 +137,9 @@ const OrderDetails = () => {
 
   // Determine if all services are completed for admin transitions
   const allServicesCompleted = Array.isArray(order?.services) && order.services.every(s => (s.service_status === 'completed') || s.service_completed === 1);
+  const isAdditionalRequestCompleted = order?.additional_request && (order?.additional_request_status === 2); // 2 means completed
+  const allTasksCompleted = allServicesCompleted && (!order?.additional_request || isAdditionalRequestCompleted);
+
   const currentStatus = Number(order?.order_status);
   const isReceived = currentStatus === 1;
   const isCompleted = currentStatus === 3;
@@ -186,8 +189,8 @@ const OrderDetails = () => {
                   message.error('Only Cancel is allowed when order is Done.');
                   return;
                 }
-                if ((val === 3 || val === 4 || val === 5) && !allServicesCompleted) {
-                  message.error('All service tasks must be completed and submitted before setting Completed, Ready for Pick Up, or Done.');
+                if ((val === 3 || val === 4 || val === 5) && !allTasksCompleted) {
+                  message.error('All service tasks and additional requests must be completed and submitted before setting Completed, Ready for Pick Up, or Done.');
                   return;
                 }
                 if (isCompleted && ![4, 5, 6].includes(val)) {
@@ -220,7 +223,7 @@ const OrderDetails = () => {
                         ? v !== 6 // In Progress: only Cancel allowed
                         : isCompleted 
                           ? ![4, 5, 6].includes(v) 
-                          : ((v === 3 || v === 4 || v === 5) && !allServicesCompleted) 
+                          : ((v === 3 || v === 4 || v === 5) && !allTasksCompleted) 
               }))}
               loading={updatingStatus}
             />
@@ -300,6 +303,34 @@ const OrderDetails = () => {
           </div>
         ) : (
           <div>No services found for this order.</div>
+        )}
+
+        {/* Additional Requests */}
+        {order.additional_request && (
+          <>
+            <Divider>Additional Requests</Divider>
+            <div className="service-list">
+              <div className="service-item">
+                <div className="service-name">
+                  {order.additional_request}
+                  <span style={{ marginLeft: 8 }}>
+                    {(() => {
+                      const status = order.additional_request_status; // Now directly use the string ENUM from backend
+                      const { text, color } = getAntdTagProps(status);
+                      return <Tag color={color} style={{ color: '#fff' }}>{text}</Tag>;
+                    })()}
+                  </span>
+                </div>
+                {order.additional_request_employee_id ? (
+                  <div className="service-assigned">
+                    Assigned to: {order.additional_request_employee_first_name} {order.additional_request_employee_last_name}
+                  </div>
+                ) : (
+                  <div className="service-assigned">Assigned to: Unassigned</div>
+                )}
+              </div>
+            </div>
+          </>
         )}
 
         {/* Order Summary */}

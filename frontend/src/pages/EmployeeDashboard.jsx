@@ -6,6 +6,41 @@ import getAuth from "../Components/util/auth";
 import { loginService } from "../Components/services/login.service";
 import { getBootstrapBadgeProps, getStatusDisplay } from "../Components/util/status";
 
+const StatusBadge = ({ status, task, onStatusChange, disabled = false, taskType }) => {
+  const statusInfo = getStatusDisplay(status);
+  const nextStatus = status === 1 ? 2 : status === 2 ? 3 : 1; // Toggle between statuses
+  
+  const handleClick = () => {
+    if (!disabled && onStatusChange) {
+      onStatusChange(task.task_id, nextStatus, taskType);
+    }
+  };
+
+  return (
+    <div 
+      onClick={handleClick}
+      style={{
+        ...statusInfo.style,
+        padding: '4px 8px',
+        borderRadius: '4px',
+        fontWeight: 500,
+        fontSize: '0.85em',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.6 : 1,
+        transition: 'opacity 0.2s',
+        ':hover': {
+          opacity: disabled ? 0.6 : 0.9,
+        },
+        minWidth: '100px',
+        textAlign: 'center',
+      }}
+      title={disabled ? 'Cannot change status' : `Click to change to ${getStatusDisplay(nextStatus).text}`}
+    >
+      {statusInfo.text}
+    </div>
+  );
+};
+
 function EmployeeDashboard() {
   const navigate = useNavigate();
   const [employee, setEmployee] = useState(null);
@@ -24,7 +59,9 @@ function EmployeeDashboard() {
       const res = await employeeService.getEmployeeTasks(empId, tok);
       const data = await res.json();
       if (data.status === "success") {
-        setTasks(Array.isArray(data.data) ? data.data : []);
+        const fetchedTasks = Array.isArray(data.data) ? data.data : [];
+        console.log("Fetched tasks for employee dashboard:", fetchedTasks); // Add this log
+        setTasks(fetchedTasks);
       } else {
         setError(data.message || "Failed to load tasks");
       }
@@ -68,19 +105,26 @@ function EmployeeDashboard() {
     return () => clearInterval(id);
   }, [employee, token, loadTasks]);
 
-  const updateStatus = async (taskId, status) => {
+  const updateStatus = async (taskId, status, taskType) => {
     try {
       setBusy(true);
       setError("");
       
-      // Find the task to check if its order is cancelled
-      const task = tasks.find(t => t.order_service_id === taskId);
-      if (task && Number(task.overall_order_status) === 6) {
+      // Find the task using task_id instead of order_service_id
+      const task = tasks.find(t => t.task_id === taskId);
+      if (!task) {
+        setError("Task not found");
+        return;
+      }
+      
+      // Check if the order is cancelled using the task's order status
+      if (Number(task.overall_order_status) === 6) {
         setError("Cannot update task: Order is cancelled. Please contact admin to change the order status.");
         return;
       }
       
-      await employeeService.updateTaskStatus(taskId, status, token);
+      // Pass the prefixed taskId to the service function
+      await employeeService.updateTaskStatus(taskId, status, token, taskType);
       // Reload tasks after status change
       await loadTasks(employee.employee_id, token);
     } catch (err) {
@@ -104,36 +148,9 @@ function EmployeeDashboard() {
     return grouped;
   }, [tasks]);
 
-  const isTaskChecked = (t) => Number(t.order_status) >= 2;
-
-  const handleSubmitOrder = async (orderId) => {
-    try {
-      setBusy(true);
-      setError("");
-      const items = tasksByOrder[orderId] || [];
-      const orderOverall = Number(items?.[0]?.overall_order_status || 1);
-      if (orderOverall === 5) {
-        window.alert("Order is Done and cannot be submitted.");
-        return;
-      }
-      if (orderOverall === 6) {
-        window.alert("Order is Cancelled and cannot be submitted. Please contact admin to change the order status.");
-        return;
-      }
-      // Submit all checked tasks for this order (set to completed)
-      for (const t of items) {
-        if (Number(t.order_status) >= 2) {
-          await employeeService.updateTaskStatus(t.order_service_id, 3, token);
-        }
-      }
-      setSubmitSuccess(true);
-      setTimeout(() => setSubmitSuccess(false), 3000);
-      await loadTasks(employee.employee_id, token);
-    } catch (err) {
-      setError(err.message || "Failed to submit order");
-    } finally {
-      setBusy(false);
-    }
+  const isTaskChecked = (t) => {
+    // Check both order_status and service_completed for backward compatibility
+    return Number(t.order_status) >= 2 || Number(t.service_completed) === 1;
   };
 
   const toggleTask = async (orderId, task, itemsInOrder) => {
@@ -152,10 +169,44 @@ function EmployeeDashboard() {
       setError("");
       // Checked => mark as checked (2), Unchecked => mark as received (1)
       const nextStatus = isTaskChecked(task) ? 1 : 2;
-      await employeeService.updateTaskStatus(task.order_service_id, nextStatus, token);
+      // For additional requests, we need to use the correct task type
+      const taskType = task.service_id === null ? 'additional_request' : 'service';
+      // Use task_id and task_type to correctly update the status
+      await employeeService.updateTaskStatus(task.task_id, nextStatus, token, taskType);
       await loadTasks(employee.employee_id, token, { silent: true });
     } catch (err) {
       setError(err.message || "Failed to update task status");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleSubmitOrder = async (orderId) => {
+    try {
+      setBusy(true);
+      setError("");
+      const items = tasksByOrder[orderId] || [];
+      const orderOverall = Number(items?.[0]?.overall_order_status || 1);
+      if (orderOverall === 5) {
+        window.alert("Order is Done and cannot be submitted.");
+        return;
+      }
+      if (orderOverall === 6) {
+        window.alert("Order is Cancelled and cannot be submitted. Please contact admin to change the order status.");
+        return;
+      }
+      // Submit all checked tasks for this order (set to completed)
+      for (const t of items) {
+        if (Number(t.order_status) >= 2) {
+          // Use task_id which is either order_service_id or order_info_id
+          await employeeService.updateTaskStatus(t.task_id, 3, token, t.task_type);
+        }
+      }
+      setSubmitSuccess(true);
+      setTimeout(() => setSubmitSuccess(false), 3000);
+      await loadTasks(employee.employee_id, token);
+    } catch (err) {
+      setError(err.message || "Failed to submit order");
     } finally {
       setBusy(false);
     }
@@ -252,7 +303,7 @@ function EmployeeDashboard() {
                             </div>
                             {items.map((t) => (
                               <div 
-                                key={t.order_service_id} 
+                                key={t.task_id} 
                                 style={{ 
                                   display: 'flex', 
                                   alignItems: 'center', 
@@ -266,25 +317,25 @@ function EmployeeDashboard() {
                                     type="checkbox"
                                     checked={isTaskChecked(t)}
                                     onChange={() => toggleTask(orderId, t, items)}
-                                    disabled={busy || orderOverall === 6}
+                                    disabled={busy || orderOverall === 5 || orderOverall === 6}
                                     style={{ width: '18px', height: '18px' }}
                                   />
                                   <div>
-                                    <div style={{ fontWeight: 500 }}>{t.service_name}</div>
-                                    <div style={{ fontSize: '0.9em', color: '#666' }}>{t.service_description}</div>
+                                    <div style={{ fontWeight: 500 }}>
+                                      {t.task_type === 'additional_request' ? 'Additional Request' : t.service_name}
+                                    </div>
+                                    <div style={{ fontSize: '0.9em', color: '#666' }}>
+                                      {t.service_description || t.additional_request || 'No description available'}
+                                    </div>
                                   </div>
                                 </div>
-                                <div
-                                  style={{
-                                    ...getBootstrapBadgeProps(t.order_status).style,
-                                    padding: '4px 8px',
-                                    borderRadius: '4px',
-                                    fontWeight: 500,
-                                    fontSize: '0.85em'
-                                  }}
-                                >
-                                  {getStatusDisplay(t.order_status).text}
-                                </div>
+                                <StatusBadge 
+                                  status={t.order_status} 
+                                  task={t} 
+                                  taskType={t.task_type}
+                                  onStatusChange={updateStatus}
+                                  disabled={orderOverall === 5 || orderOverall === 6} // Disable if order is done or cancelled
+                                />
                               </div>
                             ))}
                           </div>
