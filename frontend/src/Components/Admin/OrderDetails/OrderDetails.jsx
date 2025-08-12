@@ -172,40 +172,62 @@ const OrderDetails = () => {
               value={Number(order.order_status)}
               style={{ width: 200 }}
               onChange={async (val) => {
-                // Prevent invalid transitions client-side for immediate feedback
-                if (isCancelled && val !== 1) {
+                const currentStatus = Number(order.order_status);
+                
+                // Special case: Allow cancel from any status
+                if (val === 6) {
+                  // Allow cancel from any status
+                }
+                // From Ready to Pick Up (4), only allow Done (5), Cancel (6), or Received (1)
+                else if (currentStatus === 4 && ![1, 5, 6].includes(val)) {
+                  message.error('From Ready to Pick Up, only Done, Cancel, or Received are allowed.');
+                  return;
+                }
+                // From Cancelled, only allow Received (1)
+                else if (isCancelled && val !== 1) {
                   message.error('From Cancelled, only Received is allowed.');
                   return;
                 }
-                if (isReceived && val !== 6) {
+                // From Received, only allow Cancel (6)
+                else if (isReceived && val !== 6) {
                   message.error('Only Cancel is allowed when order is Received.');
                   return;
                 }
-                if (Number(order.order_status) === 2 && val !== 6) {
+                // From In Progress (2), only allow Cancel (6)
+                else if (currentStatus === 2 && val !== 6) {
                   message.error("When order is In Progress, only 'Cancel' is allowed.");
                   return;
                 }
-                if (isDone && val !== 6) {
+                // From Done, only allow Cancel (6)
+                else if (isDone) {
                   message.error('Only Cancel is allowed when order is Done.');
                   return;
                 }
-                if ((val === 3 || val === 4 || val === 5) && !allTasksCompleted) {
+                // Check if all tasks are completed when moving to final states
+                const isMovingToFinalState = [3, 4, 5].includes(val);
+                const isAdminMovingFromCompleted = isCompleted && [4, 5].includes(val);
+                if (!isAdminMovingFromCompleted && isMovingToFinalState && !allTasksCompleted) {
                   message.error('All service tasks and additional requests must be completed and submitted before setting Completed, Ready for Pick Up, or Done.');
                   return;
                 }
+                // From Completed, only allow Ready for Pick Up (4), Done (5), or Cancel (6)
                 if (isCompleted && ![4, 5, 6].includes(val)) {
                   message.error('From Completed, only Ready for Pick Up, Done, or Cancel are allowed.');
                   return;
                 }
+
                 try {
                   setUpdatingStatus(true);
-                  const resp = await Service.updateOrderStatus(order.order_id, val);
+                  // Add a small delay to ensure the UI updates
+                  await new Promise(resolve => setTimeout(resolve, 100));
+                  const resp = await Service.updateOrderStatus(order.order_id, val, localStorage.getItem('employee_token'));
                   if (resp?.status !== 'success') throw new Error(resp?.message || 'Bad response');
                   const data = await Service.getOrderDetails(order.order_id);
                   setOrder(data);
-                  message.success('Status updated');
+                  message.success('Status updated successfully');
                 } catch (e) {
-                  message.error(e.message || 'Failed to update status');
+                  console.error('Error updating status:', e);
+                  message.error(e.message || 'Failed to update status. Please try again.');
                 } finally {
                   setUpdatingStatus(false);
                 }
@@ -221,9 +243,11 @@ const OrderDetails = () => {
                       ? v !== 6 
                       : Number(order.order_status) === 2
                         ? v !== 6 // In Progress: only Cancel allowed
-                        : isCompleted 
-                          ? ![4, 5, 6].includes(v) 
-                          : ((v === 3 || v === 4 || v === 5) && !allTasksCompleted) 
+                        : Number(order.order_status) === 4 // Ready to Pick Up
+                          ? ![1, 5, 6].includes(v) // Only allow Received (1), Done (5), Cancel (6)
+                          : isCompleted 
+                            ? ![4, 5, 6].includes(v)
+                            : ((v === 3 || v === 4 || v === 5) && !allTasksCompleted) 
               }))}
               loading={updatingStatus}
             />

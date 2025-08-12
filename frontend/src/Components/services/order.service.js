@@ -354,20 +354,24 @@ const getAllServicesForOrder = async (orderId) => {
 // Update the status of an order
 const updateOrderStatus = async (orderId, status, token) => {
   try {
+    console.log(`[updateOrderStatus] Updating order ${orderId} to status ${status}`);
     const response = await fetch(`${api_url}/api/order/${orderId}/status`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
         "x-access-token": token || localStorage.getItem("employee_token") || localStorage.getItem("customer_token"),
+        "Authorization": `Bearer ${token || localStorage.getItem("employee_token") || localStorage.getItem("customer_token")}`
       },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ status: Number(status) }), // Ensure status is a number
     });
 
+    const data = await response.json();
+    console.log(`[updateOrderStatus] Response for order ${orderId}:`, data);
+
     if (!response.ok) {
-      throw new Error(`Error updating order status for order ${orderId}: ${response.statusText}`);
+      throw new Error(data.message || `Error updating order status: ${response.statusText}`);
     }
 
-    const data = await response.json();
     return data;
   } catch (error) {
     console.error("Error in updateOrderStatus:", error);
