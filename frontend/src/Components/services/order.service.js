@@ -200,13 +200,24 @@ const getAllOrders = async () => {
       orders = data.orders;
     }
     
-    console.log(`Extracted ${orders.length} orders from response`);
+    // Remove duplicates by creating a Map with order_id as key
+    const uniqueOrdersMap = new Map();
+    orders.forEach(order => {
+      if (order && order.order_id) {
+        uniqueOrdersMap.set(order.order_id, order);
+      }
+    });
+    
+    // Convert Map values back to array
+    const uniqueOrders = Array.from(uniqueOrdersMap.values());
+    
+    console.log(`Extracted ${uniqueOrders.length} unique orders from ${orders.length} total orders`);
     
     // Ensure we always return the expected format
     return { 
       status: "success", 
       data: { 
-        orders: Array.isArray(orders) ? orders : []
+        orders: uniqueOrders
       } 
     };
     

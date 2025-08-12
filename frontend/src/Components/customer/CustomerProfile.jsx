@@ -88,7 +88,22 @@ const CustomerProfile = () => {
         }
         const ordersData = await ordersRes.json();
         console.log("Raw orders data response:", ordersData);
-        setOrders(ordersData.data || []);
+        
+        // Deduplicate orders by order_id
+        const uniqueOrders = [];
+        const orderIds = new Set();
+        
+        if (ordersData.data && Array.isArray(ordersData.data)) {
+          ordersData.data.forEach(order => {
+            if (order && order.order_id && !orderIds.has(order.order_id)) {
+              orderIds.add(order.order_id);
+              uniqueOrders.push(order);
+            }
+          });
+        }
+        
+        console.log(`Deduplicated ${uniqueOrders.length} unique orders from ${ordersData.data?.length || 0} total orders`);
+        setOrders(uniqueOrders);
 
       } catch (error) {
         console.error("Error fetching data in CustomerProfile:", error);

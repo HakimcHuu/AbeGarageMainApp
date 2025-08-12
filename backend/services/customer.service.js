@@ -210,7 +210,7 @@ async function getVehiclesByCustomerId(customerId) {
 // A function to get all orders of a specific customer
 async function getOrdersByCustomerId(customerId) {
   const query = `
-    SELECT 
+    SELECT DISTINCT
         o.order_id,
         o.order_date,
         o.order_status,
@@ -222,9 +222,14 @@ async function getOrdersByCustomerId(customerId) {
         cvi.vehicle_year,
         cvi.vehicle_license_plate
     FROM orders o
-    LEFT JOIN order_info oi ON o.order_id = oi.order_id
+    LEFT JOIN (
+        SELECT order_id, MAX(order_total_price) as order_total_price
+        FROM order_info
+        GROUP BY order_id
+    ) oi ON o.order_id = oi.order_id
     LEFT JOIN customer_vehicle_info cvi ON o.vehicle_id = cvi.vehicle_id
     WHERE o.customer_id = ?
+    GROUP BY o.order_id
     ORDER BY o.order_date DESC;
   `;
 
