@@ -101,7 +101,11 @@ const EditOrderForm = () => {
           }
           // Fallback to direct properties if assigned array doesn't exist
           else {
-            employeeId = s.assigned_employee_id || s.employee_id || null;
+            employeeId = s.assigned_employee_id || s.employee_id;
+          }
+          // Explicitly convert 0 to null if it represents an unassigned state
+          if (employeeId === 0) {
+            employeeId = null;
           }
           
           return {
@@ -160,7 +164,11 @@ const EditOrderForm = () => {
           }
           // Fallback to direct properties if assigned array doesn't exist
           else if (originalService) {
-            employeeId = originalService.assigned_employee_id || originalService.employee_id || null;
+            employeeId = originalService.assigned_employee_id || originalService.employee_id;
+          }
+          // Explicitly convert 0 to null if it represents an unassigned state
+          if (employeeId === 0) {
+            employeeId = null;
           }
           
           return {
@@ -257,16 +265,21 @@ const EditOrderForm = () => {
   };
 
   const handleAssignEmployeeToService = (serviceId, employeeId) => {
+    // Convert employeeId to a number or null. An empty string from select means unassigned.
+    const assignedEmployeeId = employeeId ? Number(employeeId) : null;
+
     if (serviceId === ADDITIONAL_REQUEST_SERVICE_ID) {
-      setAdditionalRequestEmployeeId(employeeId || null);
+      setAdditionalRequestEmployeeId(assignedEmployeeId);
     } else {
-      setServiceAssignments(prev => 
-        prev.map(assignment => 
+      setServiceAssignments(prev => {
+        const newState = prev.map(assignment => 
           assignment.service_id === serviceId 
-            ? { ...assignment, employee_id: employeeId || null }
+            ? { ...assignment, employee_id: assignedEmployeeId }
             : assignment
-        )
-      );
+        );
+        console.log(`Assigned service ${serviceId} to employee ${assignedEmployeeId}. New serviceAssignments:`, newState);
+        return newState;
+      });
     }
   };
 
@@ -311,7 +324,8 @@ const EditOrderForm = () => {
         additional_request_employee_id: currentData.additional_request_employee_id,
         additional_request_status: updatedAdditionalRequestStatus, // Use the potentially updated status
       };
-      console.log("Sending orderInfoData to backend:", orderInfoData); // Add this log
+      console.log("Sending orderInfoData to backend:", orderInfoData);
+      console.log("Sending orderServiceData to backend:", currentData.services); // Add this log
 
       const idToUpdate = orderData?.order_id || routeOrderId;
       const resp = await Service.updateOrder({
@@ -326,9 +340,7 @@ const EditOrderForm = () => {
       
       // Show success message and navigate back
       alert("Order updated successfully!");
-      // Force a full page reload to ensure all data is fresh
-      window.location.reload(); 
-      // navigate(`/admin/orders/${idToUpdate}`); // Removed, as reload handles navigation
+      navigate(`/admin/orders/${idToUpdate}`);
     } catch (err) {
       console.error("Error updating the order:", err);
       alert("Failed to update order. Please try again.");

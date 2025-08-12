@@ -912,22 +912,44 @@ async function updateOrderServices(order_id, services) {
     // Update employee assignments for existing services
     for (const service of servicesToUpdate) {
       const currentService = currentServiceMap.get(service.service_id);
-      if (currentService && currentService.employee_id !== service.employee_id) {
-        console.log(`Updating employee assignment for service ${service.service_id} from ${currentService.employee_id} to ${service.employee_id}`);
-        
-        if (service.employee_id && !Number.isNaN(Number(service.employee_id))) {
-          // Update existing assignment
-          await db.query(
-            `UPDATE order_service_employee SET employee_id = ? WHERE order_service_id = ?`,
-            [Number(service.employee_id), currentService.order_service_id]
-          );
-        } else {
-          // Remove assignment
-          await db.query(
-            `DELETE FROM order_service_employee WHERE order_service_id = ?`,
-            [currentService.order_service_id]
-          );
+      const orderServiceId = currentService.order_service_id; // Get the order_service_id
+
+      console.log(`[Service Update] Processing service_id: ${service.service_id}, order_service_id: ${orderServiceId}`);
+      console.log(`[Service Update] Current employee_id (from DB): ${currentService.employee_id}, New employee_id (from frontend): ${service.employee_id}`);
+
+      // Check if the employee assignment has actually changed
+      if (currentService.employee_id !== service.employee_id) {
+        console.log(`[Service Update] Assignment change detected for service ${service.service_id}. From ${currentService.employee_id} to ${service.employee_id}`);
+
+        if (service.employee_id !== null) { // An employee is being assigned (or changed to another employee)
+          if (currentService.employee_id !== null) { // There was an existing assignment, so UPDATE
+            console.log(`[Service Update] Executing UPDATE for order_service_id ${orderServiceId} to employee ${service.employee_id}`);
+            const updateResult = await db.query(
+              `UPDATE order_service_employee SET employee_id = ? WHERE order_service_id = ?`,
+              [service.employee_id, orderServiceId]
+            );
+            console.log(`[Service Update] UPDATE result:`, updateResult);
+          } else { // No existing assignment, so INSERT a new one
+            console.log(`[Service Update] Executing INSERT for order_service_id ${orderServiceId} with employee ${service.employee_id}`);
+            const insertResult = await db.query(
+              `INSERT INTO order_service_employee (order_service_id, employee_id, is_primary) VALUES (?, ?, 1)`,
+              [orderServiceId, service.employee_id]
+            );
+            console.log(`[Service Update] INSERT result:`, insertResult);
+          }
+        } else { // Employee is being unassigned (service.employee_id is null)
+          if (currentService.employee_id !== null) { // There was an existing assignment, so DELETE it
+            console.log(`[Service Update] Executing DELETE for order_service_id ${orderServiceId}`);
+            const deleteResult = await db.query(
+              `DELETE FROM order_service_employee WHERE order_service_id = ?`,
+              [orderServiceId]
+            );
+            console.log(`[Service Update] DELETE result:`, deleteResult);
+          }
+          // If currentService.employee_id was already null, no action is needed.
         }
+      } else {
+        console.log(`[Service Update] No change in assignment for service ${service.service_id}. Current: ${currentService.employee_id}, New: ${service.employee_id}`);
       }
     }
 
