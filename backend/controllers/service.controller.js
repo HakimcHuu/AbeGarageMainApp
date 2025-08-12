@@ -46,27 +46,31 @@ const createService = async (req, res) => {
 
         console.log('Service created successfully:', newService);
 
-        // Respond with the newly created service
+        // Respond with the newly created service in a consistent format
         res.status(201).json({
             status: 'success',
-            message: 'Service created successfully',
-            service: newService,
+            service: {
+                service_id: newService.service_id || newService.insertId,
+                service_name: newService.service_name || service_name,
+                service_description: newService.service_description || service_description
+            },
+            message: 'Service created successfully'
         });
     } catch (error) {
         console.error('Error creating service:', error);
         res.status(500).json({
             status: 'error',
-            message: 'Failed to create service',
+            message: error.message || 'Failed to create service',
         });
     }
 };
 
-
 // Controller to update a service
 const updateService = async (req, res) => {
     try {
-        const serviceId = req.params.id;
+        const { id } = req.params;  
         const { service_name, service_description } = req.body;
+
         if (!service_name || !service_description) {
             return res.status(400).json({
                 status: 'error',
@@ -74,17 +78,28 @@ const updateService = async (req, res) => {
             });
         }
 
-        const updatedService = await Service.updateService(serviceId, { service_name, service_description });
+        console.log(`Updating service ${id} with:`, { service_name, service_description });
+
+        // Call the service to update the service
+        const updatedService = await Service.updateService(id, { service_name, service_description });
+
+        console.log('Service updated successfully:', updatedService);
+
+        // Respond with the updated service in a consistent format
         res.status(200).json({
             status: 'success',
-            message: 'Service updated successfully',
-            service: updatedService,
+            service: {
+                service_id: parseInt(id),
+                service_name: updatedService.service_name || service_name,
+                service_description: updatedService.service_description || service_description
+            },
+            message: 'Service updated successfully'
         });
     } catch (error) {
         console.error('Error updating service:', error);
         res.status(500).json({
             status: 'error',
-            message: 'Failed to update service',
+            message: error.message || 'Failed to update service',
         });
     }
 };
@@ -93,16 +108,29 @@ const updateService = async (req, res) => {
 const deleteService = async (req, res) => {
     try {
         const serviceId = req.params.id;
-        await Service.deleteService(serviceId);
+        console.log(`Attempting to delete service with ID: ${serviceId}`);
+        
+        if (!serviceId) {
+            console.error('No service ID provided for deletion');
+            return res.status(400).json({
+                status: 'error',
+                message: 'Service ID is required',
+            });
+        }
+
+        const result = await Service.deleteService(serviceId);
+        console.log(`Service ${serviceId} deleted successfully`);
+        
         res.status(200).json({
             status: 'success',
-            message: 'Service deleted successfully',
+            message: `Service ${serviceId} deleted successfully`,
+            data: result
         });
     } catch (error) {
         console.error('Error deleting service:', error);
         res.status(500).json({
             status: 'error',
-            message: 'Failed to delete service',
+            message: error.message || 'Failed to delete service',
         });
     }
 };

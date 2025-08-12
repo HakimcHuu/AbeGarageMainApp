@@ -77,22 +77,70 @@ const deleteService = async (serviceId) => {
     const query = 'DELETE FROM common_services WHERE service_id = ?';
 
     try {
-        const result = await db.query(query, [serviceId]);
-        console.log("Raw query result:", result);
+        // First, check if the service is being used in any orders
+        const [orderCount] = await db.query(
+            'SELECT COUNT(*) as orderCount FROM order_services WHERE service_id = ?',
+            [serviceId]
+        );
 
-        if (result && result.affectedRows === 1) {
+        console.log('Order count result:', orderCount);
+
+        // Check the structure of the result and extract the count
+        let count = 0;
+        if (Array.isArray(orderCount) && orderCount.length > 0) {
+            // Handle array result (MySQL2 with array results)
+            count = orderCount[0].orderCount || 0;
+        } else if (orderCount && typeof orderCount === 'object') {
+            // Handle object result (MySQL2 with object results)
+            count = orderCount.orderCount || 0;
+        }
+
+        if (count > 0) {
+            throw new Error(
+                'Cannot delete this service because it is being used in existing orders. '
+                + 'Please remove or update the orders that reference this service first.'
+            );
+        }
+
+        // If not used in any orders, proceed with deletion
+        const result = await db.query(query, [serviceId]);
+        console.log("Delete query result:", result);
+
+        // Check result structure for different MySQL2 response formats
+        const affectedRows = result.affectedRows || 
+                           (Array.isArray(result) && result[0]?.affectedRows) || 
+                           (result[0]?.affectedRows) || 0;
+
+        if (affectedRows === 1) {
             console.log(`Service deleted successfully. ID: ${serviceId}`);
             return {
+                success: true,
                 message: `Service with ID ${serviceId} deleted successfully`,
             };
         } else {
             throw new Error('Service not found or failed to delete');
         }
     } catch (error) {
-        console.error('Error deleting service:', error.message);
-        throw new Error('Service deletion failed');
+        console.error('Error deleting service:', error);
+        
+        // Check for MySQL foreign key constraint error
+        if (error.message.includes('foreign key constraint fails')) {
+            throw new Error(
+                'Cannot delete this service because it is being used in existing orders. '
+                + 'Please remove or update the orders that reference this service first.'
+            );
+        }
+        
+        // Re-throw with original error message if it's one of our custom errors
+        if (error.message.includes('Cannot delete this service')) {
+            throw error;
+        }
+        
+        // For other errors, provide a generic message
+        throw new Error(`Failed to delete service: ${error.message}`);
     }
 };
+
 
 // Seed default services (idempotent via INSERT IGNORE)
 const seedDefaultServices = async () => {

@@ -37,10 +37,20 @@ const Services = () => {
 
         try {
             await Service.deleteService(serviceId);
-            // Immediately remove the deleted service from the list
-            setServices((prevServices) => prevServices.filter(service => service.service_id !== serviceId));
+            // Remove the deleted service from the list
+            setServices(prevServices => 
+                prevServices.filter(service => service.service_id !== serviceId)
+            );
+            setError(''); // Clear any previous errors
         } catch (error) {
-            setError('Failed to delete the service.');
+            console.error('Failed to delete service:', error);
+            // Display a user-friendly error message
+            setError(
+                error.message || 'Failed to delete the service. Please try again.'
+            );
+            
+            // Auto-hide the error after 5 seconds
+            setTimeout(() => setError(''), 5000);
         }
     };
 
@@ -48,19 +58,59 @@ const Services = () => {
         setEditingService(service); 
     };
 
-    const handleServiceUpdated = (updatedService) => {
-        // Update the UI immediately after editing 
-        if (editingService) {
-            setServices((prevServices) =>
-                prevServices.map(service =>
-                    service.service_id === updatedService.service_id ? updatedService : service
-                )
+    const handleServiceUpdated = async (updatedService) => {
+        console.log('handleServiceUpdated called with:', updatedService);
+        console.log('Current editingService:', editingService);
+        
+        try {
+            // First, refetch the services to ensure we have the latest data
+            console.log('Refreshing services list...');
+            const response = await Service.getAllServices();
+            
+            if (response.status === 'success' && Array.isArray(response.services)) {
+                console.log('Successfully fetched updated services:', response.services);
+                setServices(response.services);
+                setNoServices(response.services.length === 0);
+                setEditingService(null);
+                setError('');
+            } else {
+                console.error('Failed to refresh services:', response);
+                // Fallback to optimistic update if the refetch fails
+                console.log('Falling back to optimistic update');
+                setServices(prevServices => {
+                    if (editingService) {
+                        // Update existing service
+                        const updated = prevServices.map(s => 
+                            s.service_id === updatedService.service_id 
+                                ? { ...s, ...updatedService } 
+                                : s
+                        );
+                        console.log('Updated services list (optimistic):', updated);
+                        return updated;
+                    } else {
+                        // Add new service
+                        const updated = [...prevServices, updatedService];
+                        console.log('Added new service (optimistic):', updated);
+                        return updated;
+                    }
+                });
+                setEditingService(null);
+            }
+        } catch (error) {
+            console.error('Error refreshing services:', error);
+            // Still try optimistic update even if there's an error
+            setServices(prevServices => 
+                editingService
+                    ? prevServices.map(s => 
+                          s.service_id === updatedService.service_id 
+                              ? { ...s, ...updatedService } 
+                              : s
+                      )
+                    : [...prevServices, updatedService]
             );
-        } else {
-            setServices((prevServices) => [...prevServices, updatedService]);
+            setEditingService(null);
+            setError('');
         }
-
-        setEditingService(null); 
     };
 
     return (
