@@ -711,6 +711,10 @@ const updateOrderStatus = async (orderId, status, changedByEmployeeId) => {
   );
   const currentStatus = currentStatusRow?.[0]?.order_status || "pending";
 
+  console.log(`[updateOrderStatus] Debugging status change for Order ID: ${orderId}`);
+  console.log(`[updateOrderStatus] Input status (numeric): ${status}, Converted statusString: ${statusString}`);
+  console.log(`[updateOrderStatus] Current status from DB: ${currentStatus}`);
+
   // Allow cancel from any status, including 'done'
   if (statusString === 'cancelled') {
     // Skip the 'done' check for cancel operations
@@ -728,63 +732,75 @@ const updateOrderStatus = async (orderId, status, changedByEmployeeId) => {
     throw new Error(`Order is already done. Only Cancel is allowed.`);
   }
 
-  // Rule: If attempting to set to 'completed', 'ready_for_pickup', or 'done'
-  // AND the current status is NOT already one of these final states,
-  // then ensure all services and additional requests are completed.
+  const isAdmin = true; // Since this is the admin interface
+  
+  // Special case: Allow admin to move from ready_for_pickup to done without any checks
+  if (isAdmin && currentStatus === 'ready_for_pickup' && statusString === 'done') {
+    console.log(`[updateOrderStatus] ADMIN OVERRIDE: Skipping all checks for order ${orderId} from ${currentStatus} to ${statusString}`);
+    
+    // Write history and update orders table immediately
+    await db.query(
+      `INSERT INTO order_status_history (order_id, status, changed_by) VALUES (?, ?, ?)`,
+      [orderId, statusString, changedByEmployeeId]
+    );
+
+    await db.query(`UPDATE orders SET order_status = ? WHERE order_id = ?`, [
+      statusString,
+      orderId,
+    ]);
+    
+    console.log(`[updateOrderStatus] Successfully updated order ${orderId} from ${currentStatus} to ${statusString}`);
+    return; // Exit the function early
+  }
+  
+  // For all other cases, apply normal validation
   const isMovingToFinalState = ['completed', 'ready_for_pickup', 'done'].includes(statusString);
   const isCurrentlyInFinalState = ['completed', 'ready_for_pickup', 'done'].includes(currentStatus);
-  const isAdmin = true; // Since this is the admin interface
+  
+  console.log(`[updateOrderStatus] Current: ${currentStatus}, New: ${statusString}, isMovingToFinalState: ${isMovingToFinalState}, isCurrentlyInFinalState: ${isCurrentlyInFinalState}`);
 
-  // Skip task completion check for admin moving from ready_for_pickup to done/cancelled
-  const skipTaskCompletionCheck = isAdmin && 
-    currentStatus === 'ready_for_pickup' && 
-    ['done', 'cancelled'].includes(statusString);
-
-  console.log(`[updateOrderStatus] isMovingToFinalState: ${isMovingToFinalState}, isCurrentlyInFinalState: ${isCurrentlyInFinalState}, skipTaskCompletionCheck: ${skipTaskCompletionCheck}`);
-
-  // Only check task completion if:
-  // 1. We're moving to a final state
-  // 2. We're not already in a final state (unless we're using admin override)
-  // 3. We're not using the admin override
-  const shouldCheckTaskCompletion = isMovingToFinalState && 
-                                 (!isCurrentlyInFinalState || skipTaskCompletionCheck) && 
-                                 !skipTaskCompletionCheck;
-
-  if (shouldCheckTaskCompletion) {
+  // Only check task completion if moving to a final state and not already in one
+  if (isMovingToFinalState && !isCurrentlyInFinalState) {
     console.log(`[updateOrderStatus] Checking task completion requirements`);
-    const svcAgg = await db.query(
-      `SELECT COUNT(*) AS total_services, 
-              SUM(CASE WHEN os.service_completed = 1 THEN 1 ELSE 0 END) AS completed_services,
-              oi.additional_request, 
-              oi.additional_request_status
+    
+    // Get all services for this order
+    const allServices = await db.query(
+      `SELECT os.*, s.service_name 
        FROM order_services os
-       LEFT JOIN order_info oi ON os.order_id = oi.order_id
-       WHERE os.order_id = ?
-       GROUP BY oi.additional_request, oi.additional_request_status`,
+       LEFT JOIN common_services s ON os.service_id = s.service_id -- Changed 'services' to 'common_services'
+       WHERE os.order_id = ?`,
       [orderId]
     );
     
-    const totalServices = Number(svcAgg?.[0]?.total_services || 0);
-    const completedServices = Number(svcAgg?.[0]?.completed_services || 0);
-    const additionalRequest = svcAgg?.[0]?.additional_request;
-    const additionalRequestStatus = svcAgg?.[0]?.additional_request_status;
-    const isAdditionalRequestCompleted = !additionalRequest || additionalRequestStatus === 'completed';
+    // Get additional request status
+    const [orderInfo] = await db.query(
+      `SELECT additional_request, additional_request_status 
+       FROM order_info 
+       WHERE order_id = ?`,
+      [orderId]
+    );
+    
+    const totalServices = allServices.length;
+    const completedServices = allServices.filter(s => s.service_completed).length;
+    const additionalRequest = orderInfo?.[0]?.additional_request;
+    const additionalRequestStatus = orderInfo?.[0]?.additional_request_status;
+    
+    console.log(`[updateOrderStatus] Services: ${completedServices}/${totalServices} completed`);
+    console.log(`[updateOrderStatus] Additional Request: ${additionalRequest}, Status: ${additionalRequestStatus}`);
 
-    console.log(`[updateOrderStatus] Services check - Total: ${totalServices}, Completed: ${completedServices}, Additional Request: ${additionalRequest}, Status: ${additionalRequestStatus}`);
-
+    // Check if all services are completed
     if (totalServices > 0 && completedServices < totalServices) {
-      throw new Error(
-        `Cannot update status to '${statusString}' until all assigned services are completed.`
-      );
+      const incompleteServices = allServices.filter(s => !s.service_completed);
+      console.log('Incomplete services:', incompleteServices);
+      throw new Error(`Cannot update status: ${incompleteServices.length} services are not completed`);
     }
     
-    if (additionalRequest && !isAdditionalRequestCompleted) {
-      throw new Error(
-        `Cannot update status to '${statusString}' until the additional request is completed.`
-      );
+    // Check additional request status
+    if (additionalRequest && additionalRequestStatus !== 'completed') {
+      throw new Error('Cannot update status: Additional request is not marked as completed');
     }
-  } else if (skipTaskCompletionCheck) {
-    console.log(`[updateOrderStatus] Admin override: Allowing status change from ${currentStatus} to ${statusString} without task completion check`);
+    
+    console.log(`[updateOrderStatus] All checks passed for order ${orderId}`);
   }
 
   // Write history and update orders table

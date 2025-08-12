@@ -137,8 +137,8 @@ const OrderDetails = () => {
 
   // Determine if all services are completed for admin transitions
   const allServicesCompleted = Array.isArray(order?.services) && order.services.every(s => (s.service_status === 'completed') || s.service_completed === 1);
-  const isAdditionalRequestCompleted = order?.additional_request && (order?.additional_request_status === 2); // 2 means completed
-  const allTasksCompleted = allServicesCompleted && (!order?.additional_request || isAdditionalRequestCompleted);
+  const isAdditionalRequestCompleted = !order?.additional_request || (order?.additional_request_status === 'completed');
+  const allTasksCompleted = allServicesCompleted && isAdditionalRequestCompleted;
 
   const currentStatus = Number(order?.order_status);
   const isReceived = currentStatus === 1;
