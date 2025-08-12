@@ -7,7 +7,7 @@ import { loginService } from "../Components/services/login.service";
 import { getBootstrapBadgeProps, getStatusDisplay } from "../Components/util/status";
 
 const StatusBadge = ({ status, task, onStatusChange, disabled = false, taskType }) => {
-  const statusInfo = getStatusDisplay(status);
+  const { style: badgeStyle, text: statusText } = getBootstrapBadgeProps(status);
   const nextStatus = status === 1 ? 2 : status === 2 ? 3 : 1; // Toggle between statuses
   
   const handleClick = () => {
@@ -20,7 +20,7 @@ const StatusBadge = ({ status, task, onStatusChange, disabled = false, taskType 
     <div 
       onClick={handleClick}
       style={{
-        ...statusInfo.style,
+        ...badgeStyle,
         padding: '4px 8px',
         borderRadius: '4px',
         fontWeight: 500,
@@ -36,7 +36,7 @@ const StatusBadge = ({ status, task, onStatusChange, disabled = false, taskType 
       }}
       title={disabled ? 'Cannot change status' : `Click to change to ${getStatusDisplay(nextStatus).text}`}
     >
-      {statusInfo.text}
+      {statusText}
     </div>
   );
 };
