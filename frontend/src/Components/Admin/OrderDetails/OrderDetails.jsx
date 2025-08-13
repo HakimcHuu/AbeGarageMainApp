@@ -246,7 +246,7 @@ const OrderDetails = () => {
                         : Number(order.order_status) === 4 // Ready to Pick Up
                           ? ![1, 5, 6].includes(v) // Only allow Received (1), Done (5), Cancel (6)
                           : isCompleted 
-                            ? ![4, 5, 6].includes(v)
+                            ? (v === 5) ? true : ![4, 5, 6].includes(v) // Disable Done (5) and other non-allowed options
                             : ((v === 3 || v === 4 || v === 5) && !allTasksCompleted) 
               }))}
               loading={updatingStatus}
